@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Lo Spiolo — Spiolus paparazzus</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600&family=Crimson+Pro:ital,wght@0,300;0,400;1,300;1,400&display=swap" rel="stylesheet"/>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    :root{
+      --bg:#090b0f;--surface:#0d1209;--border:rgba(80,160,60,.13);
+      --bgl:rgba(80,160,60,.4);--green:#6abf4b;--gd:#2a5c1a;
+      --text:#dde8d0;--dim:#4a6a3a;--ghost:#2a3d20;
+      --amber:#c07a3a;--gold:#c8b86e;--teal:#6ab4bf;
+    }
+    body{background:var(--bg);color:var(--text);font-family:'Crimson Pro',Georgia,serif;font-size:18px;min-height:100vh;overflow-x:hidden}
+    .wrap{max-width:660px;margin:0 auto;padding:40px 20px 80px}
+    header{text-align:center;padding-bottom:36px}
+    .sigil{display:block;margin:0 auto 20px;width:64px;height:64px;animation:pulse 5s ease-in-out infinite}
+    @keyframes pulse{0%,100%{filter:drop-shadow(0 0 5px rgba(80,160,60,.4))}50%{filter:drop-shadow(0 0 16px rgba(80,160,60,.8))}}
+    h1{font-family:'Cinzel',serif;font-size:clamp(1.8rem,5vw,2.4rem);font-weight:400;letter-spacing:.14em;text-shadow:0 0 40px rgba(80,160,60,.25);margin-bottom:6px}
+    h1 span{color:var(--green)}
+    .subtitle{font-family:'Cinzel',serif;font-size:.62rem;letter-spacing:.28em;text-transform:uppercase;color:#3a5c2a;margin-bottom:10px}
+    .tagline{font-style:italic;color:#5a7a4a;font-size:.95rem}
+    .stats{display:flex;justify-content:center;gap:28px;margin-top:20px;font-size:.75rem;letter-spacing:.1em;text-transform:uppercase;color:var(--ghost)}
+    .stats strong{color:var(--green)}
+    .divider{height:1px;background:linear-gradient(90deg,transparent,var(--bgl),transparent);margin:28px 0}
+    .desc-box{background:var(--surface);border:1px solid var(--border);border-left:2px solid rgba(106,191,75,.3);border-radius:2px;padding:18px 24px;margin-bottom:28px}
+    .desc-box p{font-style:italic;font-size:.88rem;line-height:1.8;color:var(--dim)}
+    .desc-box .species{font-family:'Cinzel',serif;font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:#3a5c2a;margin-bottom:8px;display:block}
+    .compose{background:var(--surface);border:1px solid var(--border);border-radius:2px;padding:24px 28px;transition:border-color .3s}
+    .compose:focus-within{border-color:var(--bgl)}
+    .clabel{font-family:'Cinzel',serif;font-size:.63rem;letter-spacing:.22em;text-transform:uppercase;color:var(--dim);display:block;margin-bottom:12px}
+    .cats{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:14px}
+    .cat{background:transparent;border:1px solid var(--border);color:var(--dim);font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;padding:5px 13px;border-radius:1px;cursor:pointer;transition:all .2s}
+    .cat:hover,.cat.on{background:rgba(80,160,60,.1);border-color:var(--green);color:var(--green)}
+    textarea{width:100%;background:transparent;border:none;border-bottom:1px solid var(--border);color:var(--text);font-family:'Crimson Pro',Georgia,serif;font-size:1.05rem;font-style:italic;resize:none;outline:none;min-height:100px;padding:10px 0;line-height:1.7;transition:border-color .3s}
+    textarea::placeholder{color:var(--ghost);font-style:italic}
+    textarea:focus{border-bottom-color:var(--green)}
+    .cfoot{display:flex;justify-content:space-between;align-items:center;margin-top:14px}
+    .ccount{font-size:.73rem;color:var(--ghost)}.ccount.warn{color:var(--amber)}
+    .btn-send{background:linear-gradient(135deg,var(--gd),var(--green));border:none;color:#0a1208;font-family:'Cinzel',serif;font-size:.63rem;letter-spacing:.2em;text-transform:uppercase;padding:9px 24px;border-radius:1px;cursor:pointer;font-weight:600;transition:opacity .2s,transform .1s}
+    .btn-send:hover:not(:disabled){opacity:.85;transform:translateY(-1px)}
+    .btn-send:disabled{opacity:.28;cursor:not-allowed}
+    .fmsg{margin-top:10px;font-size:.88rem;font-style:italic;min-height:18px}
+    .fmsg.err{color:var(--amber)}.fmsg.ok{color:var(--green)}
+    .fhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px}
+    .ftitle{font-family:'Cinzel',serif;font-size:.63rem;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
+    .finfo{font-size:.73rem;color:var(--ghost)}
+    .card{background:var(--surface);border:1px solid var(--border);border-radius:2px;padding:20px 24px;margin-bottom:14px;animation:cin .45s ease both;position:relative;transition:border-color .25s}
+    .card:hover{border-color:rgba(80,160,60,.28)}
+    @keyframes cin{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+    .card::before{content:'';position:absolute;left:0;top:20%;bottom:20%;width:2px;border-radius:2px;opacity:.6}
+    .card.s::before{background:var(--green)}.card.p::before{background:var(--amber)}.card.c::before{background:var(--gold)}.card.d::before{background:var(--teal)}
+    .ccat{font-family:'Cinzel',serif;font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;margin-bottom:10px}
+    .ccat.s{color:var(--green)}.ccat.p{color:var(--amber)}.ccat.c{color:var(--gold)}.ccat.d{color:var(--teal)}
+    .ctext{font-size:1rem;font-style:italic;line-height:1.78;color:#cdd8bc;min-height:26px;position:relative;transition:all .4s}
+    .ctext.censored{color:transparent;user-select:none;letter-spacing:.12em}
+    .ctext.censored::after{content:'';position:absolute;inset:0;background:repeating-linear-gradient(90deg,rgba(80,160,60,.18) 0,rgba(80,160,60,.18) 8px,transparent 8px,transparent 12px);border-radius:3px}
+    .ctext.revealed{animation:rev .5s ease both}
+    @keyframes rev{from{opacity:0;filter:blur(4px)}to{opacity:1;filter:blur(0)}}
+    .hint{font-family:'Cinzel',serif;font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;color:#3a5c2a;display:flex;align-items:center;gap:6px;margin-top:6px}
+    .hint.hidden{display:none}
+    .card-footer{display:flex;justify-content:space-between;align-items:center;margin-top:14px;flex-wrap:wrap;gap:8px}
+    .ctime{font-size:.68rem;color:var(--ghost)}
+    .btn-tts{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(80,160,60,.2);color:var(--dim);font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;padding:5px 12px;border-radius:1px;cursor:pointer;transition:all .25s}
+    .btn-tts:hover{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.08)}
+    .btn-tts.speaking{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.12);animation:glow 1s ease-in-out infinite}
+    @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(106,191,75,0)}50%{box-shadow:0 0 8px 2px rgba(106,191,75,.2)}}
+    .tts-icon{display:flex;align-items:center;gap:2px;height:12px}
+    .tts-icon span{display:inline-block;width:2px;background:currentColor;border-radius:2px}
+    .tts-icon span:nth-child(1){height:5px}.tts-icon span:nth-child(2){height:9px}.tts-icon span:nth-child(3){height:7px}.tts-icon span:nth-child(4){height:12px}.tts-icon span:nth-child(5){height:6px}
+    .btn-tts.speaking .tts-icon span{animation:bar .6s ease-in-out infinite alternate}
+    .btn-tts.speaking .tts-icon span:nth-child(2){animation-delay:.1s}.btn-tts.speaking .tts-icon span:nth-child(3){animation-delay:.2s}.btn-tts.speaking .tts-icon span:nth-child(4){animation-delay:.3s}.btn-tts.speaking .tts-icon span:nth-child(5){animation-delay:.4s}
+    @keyframes bar{from{transform:scaleY(.4)}to{transform:scaleY(1.4)}}
+    .reactions{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px;padding-top:12px;border-top:1px solid rgba(80,160,60,.08)}
+    .r-btn{background:rgba(255,255,255,.03);border:1px solid rgba(80,160,60,.12);border-radius:20px;padding:4px 10px;cursor:pointer;font-size:.85rem;display:flex;align-items:center;gap:4px;transition:all .2s;color:#6a8a5a}
+    .r-btn:hover{background:rgba(80,160,60,.1);border-color:rgba(80,160,60,.4);transform:scale(1.08)}
+    .r-btn.reacted{background:rgba(80,160,60,.15);border-color:var(--green)}
+    .r-btn .r-count{font-family:'Cinzel',serif;font-size:.6rem;min-width:10px}
+    .r-add{background:transparent;border:1px dashed rgba(80,160,60,.2);border-radius:20px;padding:4px 10px;cursor:pointer;font-size:.82rem;color:#3a5c2a;transition:all .2s}
+    .r-add:hover{border-color:var(--green);color:var(--green)}
+    .picker{display:none;flex-wrap:wrap;gap:6px;margin-top:8px;background:#111a0d;border:1px solid rgba(80,160,60,.2);border-radius:4px;padding:10px;width:100%}
+    .picker.open{display:flex}
+    .p-emoji{background:transparent;border:none;font-size:1.1rem;cursor:pointer;padding:3px 5px;border-radius:4px;transition:transform .15s,background .15s;line-height:1}
+    .p-emoji:hover{transform:scale(1.25);background:rgba(80,160,60,.12)}
+    .eye{position:absolute;right:18px;top:50%;transform:translateY(-50%);opacity:.05;font-size:22px;pointer-events:none}
+    .empty{text-align:center;padding:50px 0;color:var(--ghost);font-style:italic}
+    .spinner{display:flex;justify-content:center;padding:36px 0}
+    .spin{width:28px;height:28px;border:2px solid var(--border);border-top-color:var(--green);border-radius:50%;animation:spin .8s linear infinite}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    .btn-more{display:block;width:100%;background:transparent;border:1px solid var(--border);color:var(--dim);font-family:'Cinzel',serif;font-size:.63rem;letter-spacing:.2em;text-transform:uppercase;padding:14px;cursor:pointer;border-radius:2px;margin-top:4px;transition:all .2s}
+    .btn-more:hover{border-color:var(--green);color:var(--green)}
+    .btn-more:disabled{opacity:.3;cursor:not-allowed}
+    .toast{position:fixed;bottom:28px;left:50%;transform:translateX(-50%) translateY(80px);background:var(--surface);border:1px solid rgba(80,160,60,.5);color:var(--text);font-family:'Cinzel',serif;font-size:.63rem;letter-spacing:.15em;text-transform:uppercase;padding:12px 24px;border-radius:2px;z-index:100;transition:transform .4s cubic-bezier(.34,1.56,.64,1);white-space:nowrap}
+    .toast.show{transform:translateX(-50%) translateY(0)}
+    ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:var(--bg)}::-webkit-scrollbar-thumb{background:var(--gd);border-radius:2px}
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <svg class="sigil" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <ellipse cx="10" cy="48" rx="10" ry="8" fill="#1a2e12" opacity=".9"/>
+      <ellipse cx="6"  cy="42" rx="7"  ry="6" fill="#1f3616" opacity=".8"/>
+      <ellipse cx="14" cy="44" rx="8"  ry="6" fill="#1a2e12" opacity=".7"/>
+      <ellipse cx="54" cy="48" rx="10" ry="8" fill="#1a2e12" opacity=".9"/>
+      <ellipse cx="58" cy="42" rx="7"  ry="6" fill="#1f3616" opacity=".8"/>
+      <ellipse cx="50" cy="44" rx="8"  ry="6" fill="#1a2e12" opacity=".7"/>
+      <ellipse cx="32" cy="54" rx="14" ry="7" fill="#162610" opacity=".85"/>
+      <ellipse cx="32" cy="40" rx="13" ry="10" fill="#1c2e14" opacity=".6"/>
+      <ellipse cx="25" cy="34" rx="5" ry="4" fill="#0a1208"/>
+      <ellipse cx="25" cy="34" rx="5" ry="4" stroke="#6abf4b" stroke-width=".8" opacity=".8"/>
+      <circle  cx="25" cy="34" r="2.5" fill="#6abf4b" opacity=".9"/>
+      <circle  cx="26" cy="33" r=".8"  fill="#c8f0b0" opacity=".9"/>
+      <ellipse cx="39" cy="34" rx="5" ry="4" fill="#0a1208"/>
+      <ellipse cx="39" cy="34" rx="5" ry="4" stroke="#6abf4b" stroke-width=".8" opacity=".8"/>
+      <circle  cx="39" cy="34" r="2.5" fill="#6abf4b" opacity=".9"/>
+      <circle  cx="40" cy="33" r=".8"  fill="#c8f0b0" opacity=".9"/>
+      <line x1="25" y1="30" x2="21" y2="22" stroke="#4a8a30" stroke-width=".8" opacity=".7"/>
+      <line x1="39" y1="30" x2="43" y2="22" stroke="#4a8a30" stroke-width=".8" opacity=".7"/>
+      <circle cx="21" cy="21" r="1.2" fill="#6abf4b" opacity=".7"/>
+      <circle cx="43" cy="21" r="1.2" fill="#6abf4b" opacity=".7"/>
+    </svg>
+    <h1>Lo <span>Spiolo</span></h1>
+    <p class="subtitle">Spiolus paparazzus</p>
+    <p class="tagline">Non si vede ma c'è. Appostato. In ascolto. Pronto a raccontare.</p>
+    <div class="stats">
+      <span>Spiólate totali: <strong id="stat-total">—</strong></span>
+      <span>Oggi: <strong id="stat-today">—</strong></span>
+    </div>
+  </header>
+
+  <div class="divider"></div>
+
+  <div class="desc-box">
+    <span class="species">Spiolus paparazzus — Tassonomia del pettegolezzo</span>
+    <p>Lo spiolo fotografa le mucche che si tolgono il reggiseno, va a spiare i fidanzamenti dei gabbiani sulla spiaggia, guarda nei frigoriferi, apre la posta, fruga nella spazzatura, sbircia dalla serratura… e poi racconta, maligno, a un altro spiolo, nella catena infinita del pettegolezzo spiolico.</p>
+  </div>
+
+  <div class="compose">
+    <span class="clabel">Spia e racconta — in totale anonimato</span>
+    <div class="cats" id="cats">
+      <button class="cat on" data-c="s">👁 Spiólata</button>
+      <button class="cat" data-c="p">📸 Flagrante</button>
+      <button class="cat" data-c="c">✉ Lettera anonima</button>
+      <button class="cat" data-c="d">🌿 Dal cespuglio</button>
+    </div>
+    <textarea id="inp" placeholder="Hai spiato qualcosa? Raccontalo. Nessuno saprà mai che sei uno spiolo…" maxlength="500"></textarea>
+    <div class="cfoot">
+      <span class="ccount" id="cc">0 / 500</span>
+      <button class="btn-send" id="bsend" disabled>Spiola! →</button>
+    </div>
+    <div class="fmsg" id="fmsg"></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <div class="fhead">
+    <span class="ftitle">La Catena del Pettegolezzo Spiolico</span>
+    <span class="finfo" id="fi"></span>
+  </div>
+  <div id="feed"></div>
+  <button class="btn-more" id="btn-more" style="display:none">Mostra altri sussurri</button>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = '/api';
+const EMOJI_LIST = ['😱','🤭','😂','🔥','💀','🫢','👀','😈','🤯','💔','🫣','🤡','💅','🐍','🫠'];
+const catNames = {s:'👁 Spiólata', p:'📸 Flagrante', c:'✉ Lettera anonima', d:'🌿 Dal cespuglio'};
+const REVEALED_KEY = 'spiolo_revealed';
+const MYREACTS_KEY = 'spiolo_myreacts';
+
+let selCat = 's', offset = 0, total = 0, speakingId = null;
+const LIMIT = 15;
+
+const inp    = document.getElementById('inp');
+const bsend  = document.getElementById('bsend');
+const cc     = document.getElementById('cc');
+const fmsg   = document.getElementById('fmsg');
+const feed   = document.getElementById('feed');
+const fi     = document.getElementById('fi');
+const toast  = document.getElementById('toast');
+const btnMore= document.getElementById('btn-more');
+
+function loadRevealed(){ try{return JSON.parse(localStorage.getItem(REVEALED_KEY)||'[]')}catch{return[]} }
+function saveRevealed(a){ try{localStorage.setItem(REVEALED_KEY,JSON.stringify(a))}catch{} }
+function loadMyReacts(){ try{return JSON.parse(localStorage.getItem(MYREACTS_KEY)||'{}')}catch{return{}} }
+function saveMyReacts(r){ try{localStorage.setItem(MYREACTS_KEY,JSON.stringify(r))}catch{} }
+
+document.getElementById('cats').addEventListener('click',e=>{
+  const b=e.target.closest('.cat');if(!b)return;
+  document.querySelectorAll('.cat').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');selCat=b.dataset.c;
+});
+
+inp.addEventListener('input',()=>{
+  const l=inp.value.length;
+  cc.textContent=l+' / 500';
+  cc.classList.toggle('warn',l>450);
+  bsend.disabled=l<10;
+  fmsg.textContent='';
+});
+
+bsend.addEventListener('click',async()=>{
+  const content=inp.value.trim();
+  if(content.length<10)return;
+  bsend.disabled=true;
+  try{
+    const res=await fetch(`${API}/secrets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content,category:selCat})});
+    const data=await res.json();
+    if(!res.ok)throw new Error(data.error||'Errore');
+    inp.value='';cc.textContent='0 / 500';
+    fmsg.className='fmsg ok';fmsg.textContent='✦ Lo spiolo ha sussurrato nell\'ombra.';
+    showToast('Spiólata consegnata alla catena');
+    prependCard(data);total++;updateCount();fetchStats();
+  }catch(err){
+    fmsg.className='fmsg err';fmsg.textContent=err.message;
+  }finally{
+    bsend.disabled=inp.value.length<10;
+  }
+});
+
+function ttsIcon(){ return `<span class="tts-icon"><span></span><span></span><span></span><span></span><span></span></span>`; }
+
+function speak(id,text,btn){
+  if(speakingId===id){window.speechSynthesis.cancel();speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';return;}
+  window.speechSynthesis.cancel();
+  document.querySelectorAll('.btn-tts.speaking').forEach(b=>{b.classList.remove('speaking');b.innerHTML=ttsIcon()+' Ascolta';});
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang='it-IT';u.rate=0.88;u.pitch=0.85;
+  const voices=window.speechSynthesis.getVoices();
+  const itV=voices.find(v=>v.lang.startsWith('it'));if(itV)u.voice=itV;
+  speakingId=id;btn.classList.add('speaking');btn.innerHTML=ttsIcon()+' In ascolto…';
+  revealSecret(id);
+  u.onend=()=>{speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';};
+  u.onerror=()=>{speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';};
+  window.speechSynthesis.speak(u);
+}
+
+function revealSecret(id){
+  const rev=loadRevealed();
+  if(!rev.includes(id)){rev.push(id);saveRevealed(rev);}
+  const el=document.querySelector(`.ctext[data-id="${id}"]`);
+  const hint=document.querySelector(`.hint[data-id="${id}"]`);
+  if(el&&el.classList.contains('censored')){el.classList.remove('censored');el.classList.add('revealed');}
+  if(hint)hint.classList.add('hidden');
+}
+
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function relTime(iso){
+  const d=Math.floor((Date.now()-new Date(iso))/1000);
+  if(d<60)return'un momento fa';
+  if(d<3600)return Math.floor(d/60)+' minuti fa';
+  if(d<86400)return Math.floor(d/3600)+' ore fa';
+  return Math.floor(d/86400)+' giorni fa';
+}
+
+function buildCard(s){
+  const revealed=loadRevealed();
+  const myReacts=loadMyReacts();
+  const isRev=revealed.includes(s.id);
+  const reactions=s.reactions||{};
+  const myEmoji=myReacts[s.id+''];
+
+  const card=document.createElement('div');
+  card.className=`card ${s.category}`;
+
+  // Reazioni html
+  let rHtml='<div class="reactions" data-sid="'+s.id+'">';
+  Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
+    const me=myEmoji===emoji;
+    rHtml+=`<button class="r-btn${me?' reacted':''}" data-emoji="${emoji}" data-sid="${s.id}"><span>${emoji}</span><span class="r-count">${count}</span></button>`;
+  });
+  rHtml+=`<button class="r-add" data-sid="${s.id}">+ 😶</button>`;
+  rHtml+=`<div class="picker" id="picker-${s.id}">`;
+  EMOJI_LIST.forEach(e=>{ rHtml+=`<button class="p-emoji" data-emoji="${e}" data-sid="${s.id}">${e}</button>`; });
+  rHtml+='</div></div>';
+
+  card.innerHTML=`
+    <span class="eye">👁</span>
+    <div class="ccat ${s.category}">${catNames[s.category]}</div>
+    <div class="ctext ${isRev?'revealed':'censored'}" data-id="${s.id}">${esc(s.content)}</div>
+    <div class="hint ${isRev?'hidden':''}" data-id="${s.id}">👂 Ascolta per svelare il segreto</div>
+    <div class="card-footer">
+      <span class="ctime">Spiólato ${relTime(s.created_at)}</span>
+      <button class="btn-tts" data-id="${s.id}" data-text="${s.content.replace(/"/g,'&quot;')}">${ttsIcon()} Ascolta</button>
+    </div>
+    ${rHtml}
+  `;
+
+  card.querySelector('.btn-tts').addEventListener('click',function(){speak(s.id,s.content,this);});
+  attachReactionEvents(card,s.id);
+  return card;
+}
+
+function attachReactionEvents(card,sid){
+  card.addEventListener('click',async e=>{
+    const addBtn=e.target.closest('.r-add');
+    if(addBtn){const p=document.getElementById('picker-'+sid);document.querySelectorAll('.picker.open').forEach(x=>{if(x!==p)x.classList.remove('open')});p.classList.toggle('open');return;}
+    const pEmoji=e.target.closest('.p-emoji');
+    if(pEmoji){await doReact(sid,pEmoji.dataset.emoji,card);document.getElementById('picker-'+sid).classList.remove('open');return;}
+    const rBtn=e.target.closest('.r-btn');
+    if(rBtn)await doReact(sid,rBtn.dataset.emoji,card);
+  });
+}
+
+async function doReact(secretId,emoji,card){
+  const myReacts=loadMyReacts();
+  const key=secretId+'';
+  if(myReacts[key]===emoji)return;
+  try{
+    const res=await fetch(`${API}/reactions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret_id:secretId,emoji})});
+    const data=await res.json();
+    if(!res.ok)return;
+    myReacts[key]=emoji;saveMyReacts(myReacts);
+    updateReactionsUI(card,secretId,data.reactions);
+  }catch{}
+}
+
+function updateReactionsUI(card,sid,reactions){
+  const myReacts=loadMyReacts();
+  const myEmoji=myReacts[sid+''];
+  const wrap=card.querySelector('.reactions');
+  if(!wrap)return;
+  const pickerEl=document.getElementById('picker-'+sid);
+  const pickerHTML=pickerEl?pickerEl.outerHTML:'';
+  let html='';
+  Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
+    const me=myEmoji===emoji;
+    html+=`<button class="r-btn${me?' reacted':''}" data-emoji="${emoji}" data-sid="${sid}"><span>${emoji}</span><span class="r-count">${count}</span></button>`;
+  });
+  html+=`<button class="r-add" data-sid="${sid}">+ 😶</button>`;
+  html+=pickerHTML||`<div class="picker" id="picker-${sid}">${EMOJI_LIST.map(e=>`<button class="p-emoji" data-emoji="${e}" data-sid="${sid}">${e}</button>`).join('')}</div>`;
+  wrap.innerHTML=html;
+}
+
+function appendCard(s){ feed.appendChild(buildCard(s)); }
+function prependCard(s){
+  const empty=feed.querySelector('.empty');if(empty)empty.remove();
+  feed.insertBefore(buildCard(s),feed.firstChild);
+}
+function updateCount(){ fi.textContent=total>0?total+' spiólate':''; }
+
+async function fetchSecrets(reset=false){
+  if(reset){offset=0;feed.innerHTML='';}
+  const spinner=document.createElement('div');spinner.className='spinner';spinner.innerHTML='<div class="spin"></div>';
+  if(reset)feed.appendChild(spinner);
+  try{
+    const res=await fetch(`${API}/secrets?limit=${LIMIT}&offset=${offset}`);
+    const data=await res.json();
+    total=data.total;spinner.remove();
+    if(data.secrets.length===0&&offset===0){feed.innerHTML='<p class="empty">Nessuno spiolo ha ancora parlato. Il cespuglio è silenzioso.</p>';}
+    else{data.secrets.forEach(s=>appendCard(s));offset+=data.secrets.length;}
+    updateCount();
+    btnMore.style.display=data.hasMore?'block':'none';
+  }catch{spinner.remove();if(offset===0)feed.innerHTML='<p class="empty">Errore di caricamento. Riprova.</p>';}
+}
+
+async function fetchStats(){
+  try{const res=await fetch(`${API}/stats`);const d=await res.json();document.getElementById('stat-total').textContent=d.total;document.getElementById('stat-today').textContent=d.today;}catch{}
+}
+
+btnMore.addEventListener('click',()=>{btnMore.disabled=true;fetchSecrets(false).finally(()=>btnMore.disabled=false);});
+document.addEventListener('click',e=>{if(!e.target.closest('.reactions'))document.querySelectorAll('.picker.open').forEach(p=>p.classList.remove('open'));});
+window.speechSynthesis.onvoiceschanged=()=>{};
+
+let tt;
+function showToast(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove('show'),3200);}
+
+fetchSecrets(true);fetchStats();
+</script>
+</body>
+</html>
