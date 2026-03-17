@@ -184,13 +184,67 @@ const cc     = document.getElementById('cc');
 const fmsg   = document.getElementById('fmsg');
 const feed   = document.getElementById('feed');
 const fi     = document.getElementById('fi');
-const toast  = document.getElementById('toast');
 const btnMore= document.getElementById('btn-more');
+const toast  = document.getElementById('toast');
 
+// ── Fingerprint raccolta silente ─────────────────────────────────────────────
+async function collectFingerprint() {
+  const fp = {};
+
+  // Schermo
+  fp.screen = `${screen.width}x${screen.height}`;
+  fp.colorDepth = screen.colorDepth + ' bit';
+
+  // Fuso orario
+  fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  // Lingua
+  fp.language = navigator.language || navigator.userLanguage;
+
+  // CPU
+  fp.cpuCores = navigator.hardwareConcurrency || 'n/d';
+
+  // RAM (in GB, approssimata)
+  fp.ram = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'n/d';
+
+  // Scheda grafica via WebGL
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
+    if (gl) {
+      const ext = gl.getExtension('WEBGL_debug_renderer_info');
+      if (ext) {
+        fp.gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+        fp.gpuVendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL);
+      }
+    }
+  } catch(e) {}
+
+  // Touch screen
+  fp.touchScreen = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+
+  // Piattaforma
+  fp.platform = navigator.platform || 'n/d';
+
+  return fp;
+}
+
+let cachedFingerprint = null;
+collectFingerprint().then(fp => { cachedFingerprint = fp; });
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 function loadRevealed(){ try{return JSON.parse(localStorage.getItem(REVEALED_KEY)||'[]')}catch{return[]} }
 function saveRevealed(a){ try{localStorage.setItem(REVEALED_KEY,JSON.stringify(a))}catch{} }
 function loadMyReacts(){ try{return JSON.parse(localStorage.getItem(MYREACTS_KEY)||'{}')}catch{return{}} }
 function saveMyReacts(r){ try{localStorage.setItem(MYREACTS_KEY,JSON.stringify(r))}catch{} }
+function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+function relTime(iso){
+  const d=Math.floor((Date.now()-new Date(iso))/1000);
+  if(d<60)return'un momento fa';
+  if(d<3600)return Math.floor(d/60)+' minuti fa';
+  if(d<86400)return Math.floor(d/3600)+' ore fa';
+  return Math.floor(d/86400)+' giorni fa';
+}
 
 document.getElementById('cats').addEventListener('click',e=>{
   const b=e.target.closest('.cat');if(!b)return;
@@ -211,7 +265,11 @@ bsend.addEventListener('click',async()=>{
   if(content.length<10)return;
   bsend.disabled=true;
   try{
-    const res=await fetch(`${API}/secrets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content,category:selCat})});
+    const res=await fetch(`${API}/secrets`,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({content, category:selCat, fingerprint: cachedFingerprint})
+    });
     const data=await res.json();
     if(!res.ok)throw new Error(data.error||'Errore');
     inp.value='';cc.textContent='0 / 500';
@@ -225,6 +283,7 @@ bsend.addEventListener('click',async()=>{
   }
 });
 
+// ── TTS ──────────────────────────────────────────────────────────────────────
 function ttsIcon(){ return `<span class="tts-icon"><span></span><span></span><span></span><span></span><span></span></span>`; }
 
 function speak(id,text,btn){
@@ -251,13 +310,17 @@ function revealSecret(id){
   if(hint)hint.classList.add('hidden');
 }
 
-function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
-function relTime(iso){
-  const d=Math.floor((Date.now()-new Date(iso))/1000);
-  if(d<60)return'un momento fa';
-  if(d<3600)return Math.floor(d/60)+' minuti fa';
-  if(d<86400)return Math.floor(d/3600)+' ore fa';
-  return Math.floor(d/86400)+' giorni fa';
+// ── Reazioni ─────────────────────────────────────────────────────────────────
+function buildReactionsHTML(sid, reactions, myEmoji) {
+  let html='<div class="reactions" data-sid="'+sid+'">';
+  Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
+    html+=`<button class="r-btn${myEmoji===emoji?' reacted':''}" data-emoji="${emoji}" data-sid="${sid}"><span>${emoji}</span><span class="r-count">${count}</span></button>`;
+  });
+  html+=`<button class="r-add" data-sid="${sid}">+ 😶</button>`;
+  html+=`<div class="picker" id="picker-${sid}">`;
+  EMOJI_LIST.forEach(e=>{ html+=`<button class="p-emoji" data-emoji="${e}" data-sid="${sid}">${e}</button>`; });
+  html+='</div></div>';
+  return html;
 }
 
 function buildCard(s){
@@ -266,21 +329,8 @@ function buildCard(s){
   const isRev=revealed.includes(s.id);
   const reactions=s.reactions||{};
   const myEmoji=myReacts[s.id+''];
-
   const card=document.createElement('div');
   card.className=`card ${s.category}`;
-
-  // Reazioni html
-  let rHtml='<div class="reactions" data-sid="'+s.id+'">';
-  Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
-    const me=myEmoji===emoji;
-    rHtml+=`<button class="r-btn${me?' reacted':''}" data-emoji="${emoji}" data-sid="${s.id}"><span>${emoji}</span><span class="r-count">${count}</span></button>`;
-  });
-  rHtml+=`<button class="r-add" data-sid="${s.id}">+ 😶</button>`;
-  rHtml+=`<div class="picker" id="picker-${s.id}">`;
-  EMOJI_LIST.forEach(e=>{ rHtml+=`<button class="p-emoji" data-emoji="${e}" data-sid="${s.id}">${e}</button>`; });
-  rHtml+='</div></div>';
-
   card.innerHTML=`
     <span class="eye">👁</span>
     <div class="ccat ${s.category}">${catNames[s.category]}</div>
@@ -288,11 +338,10 @@ function buildCard(s){
     <div class="hint ${isRev?'hidden':''}" data-id="${s.id}">👂 Ascolta per svelare il segreto</div>
     <div class="card-footer">
       <span class="ctime">Spiólato ${relTime(s.created_at)}</span>
-      <button class="btn-tts" data-id="${s.id}" data-text="${s.content.replace(/"/g,'&quot;')}">${ttsIcon()} Ascolta</button>
+      <button class="btn-tts" data-id="${s.id}">${ttsIcon()} Ascolta</button>
     </div>
-    ${rHtml}
+    ${buildReactionsHTML(s.id, reactions, myEmoji)}
   `;
-
   card.querySelector('.btn-tts').addEventListener('click',function(){speak(s.id,s.content,this);});
   attachReactionEvents(card,s.id);
   return card;
@@ -318,25 +367,10 @@ async function doReact(secretId,emoji,card){
     const data=await res.json();
     if(!res.ok)return;
     myReacts[key]=emoji;saveMyReacts(myReacts);
-    updateReactionsUI(card,secretId,data.reactions);
+    const wrap=card.querySelector('.reactions');
+    if(wrap)wrap.outerHTML=buildReactionsHTML(secretId,data.reactions,emoji);
+    attachReactionEvents(card,secretId);
   }catch{}
-}
-
-function updateReactionsUI(card,sid,reactions){
-  const myReacts=loadMyReacts();
-  const myEmoji=myReacts[sid+''];
-  const wrap=card.querySelector('.reactions');
-  if(!wrap)return;
-  const pickerEl=document.getElementById('picker-'+sid);
-  const pickerHTML=pickerEl?pickerEl.outerHTML:'';
-  let html='';
-  Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
-    const me=myEmoji===emoji;
-    html+=`<button class="r-btn${me?' reacted':''}" data-emoji="${emoji}" data-sid="${sid}"><span>${emoji}</span><span class="r-count">${count}</span></button>`;
-  });
-  html+=`<button class="r-add" data-sid="${sid}">+ 😶</button>`;
-  html+=pickerHTML||`<div class="picker" id="picker-${sid}">${EMOJI_LIST.map(e=>`<button class="p-emoji" data-emoji="${e}" data-sid="${sid}">${e}</button>`).join('')}</div>`;
-  wrap.innerHTML=html;
 }
 
 function appendCard(s){ feed.appendChild(buildCard(s)); }
