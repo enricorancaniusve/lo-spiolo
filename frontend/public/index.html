@@ -46,6 +46,16 @@
     .btn-send:disabled{opacity:.28;cursor:not-allowed}
     .fmsg{margin-top:10px;font-size:.88rem;font-style:italic;min-height:18px}
     .fmsg.err{color:var(--amber)}.fmsg.ok{color:var(--green)}
+
+    /* ── Voice selector ── */
+    .voice-bar{display:flex;align-items:center;gap:10px;margin-bottom:28px;background:var(--surface);border:1px solid var(--border);border-radius:2px;padding:14px 20px;flex-wrap:wrap}
+    .voice-label{font-family:'Cinzel',serif;font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
+    .voice-select{flex:1;min-width:160px;background:#0a1208;border:1px solid rgba(80,160,60,.2);color:var(--text);font-family:'Crimson Pro',Georgia,serif;font-size:.9rem;font-style:italic;padding:6px 10px;border-radius:1px;outline:none;cursor:pointer;transition:border-color .2s}
+    .voice-select:focus{border-color:var(--green)}
+    .btn-preview{background:transparent;border:1px solid rgba(80,160,60,.2);color:var(--dim);font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;padding:6px 14px;border-radius:1px;cursor:pointer;transition:all .2s;white-space:nowrap}
+    .btn-preview:hover{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.08)}
+    .btn-preview.speaking{border-color:var(--green);color:var(--green);animation:glow 1s ease-in-out infinite}
+
     .fhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px}
     .ftitle{font-family:'Cinzel',serif;font-size:.63rem;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
     .finfo{font-size:.73rem;color:var(--ghost)}
@@ -140,6 +150,15 @@
     <p>Lo spiolo fotografa le mucche che si tolgono il reggiseno, va a spiare i fidanzamenti dei gabbiani sulla spiaggia, guarda nei frigoriferi, apre la posta, fruga nella spazzatura, sbircia dalla serratura… e poi racconta, maligno, a un altro spiolo, nella catena infinita del pettegolezzo spiolico.</p>
   </div>
 
+  <!-- Selettore voce -->
+  <div class="voice-bar">
+    <span class="voice-label">🔊 Voce dello spiolo</span>
+    <select class="voice-select" id="voice-select">
+      <option value="">Caricamento voci…</option>
+    </select>
+    <button class="btn-preview" id="btn-preview">▶ Prova</button>
+  </div>
+
   <div class="compose">
     <span class="clabel">Spia e racconta — in totale anonimato</span>
     <div class="cats" id="cats">
@@ -172,67 +191,115 @@
 const API = '/api';
 const EMOJI_LIST = ['😱','🤭','😂','🔥','💀','🫢','👀','😈','🤯','💔','🫣','🤡','💅','🐍','🫠'];
 const catNames = {s:'👁 Spiólata', p:'📸 Flagrante', c:'✉ Lettera anonima', d:'🌿 Dal cespuglio'};
-const REVEALED_KEY = 'spiolo_revealed';
-const MYREACTS_KEY = 'spiolo_myreacts';
+const REVEALED_KEY  = 'spiolo_revealed';
+const MYREACTS_KEY  = 'spiolo_myreacts';
+const VOICE_KEY     = 'spiolo_voice';
 
 let selCat = 's', offset = 0, total = 0, speakingId = null;
 const LIMIT = 15;
 
-const inp    = document.getElementById('inp');
-const bsend  = document.getElementById('bsend');
-const cc     = document.getElementById('cc');
-const fmsg   = document.getElementById('fmsg');
-const feed   = document.getElementById('feed');
-const fi     = document.getElementById('fi');
-const btnMore= document.getElementById('btn-more');
-const toast  = document.getElementById('toast');
+const inp       = document.getElementById('inp');
+const bsend     = document.getElementById('bsend');
+const cc        = document.getElementById('cc');
+const fmsg      = document.getElementById('fmsg');
+const feed      = document.getElementById('feed');
+const fi        = document.getElementById('fi');
+const btnMore   = document.getElementById('btn-more');
+const toast     = document.getElementById('toast');
+const voiceSel  = document.getElementById('voice-select');
+const btnPreview= document.getElementById('btn-preview');
 
-// ── Fingerprint raccolta silente ─────────────────────────────────────────────
+// ── Voci ─────────────────────────────────────────────────────────────────────
+let allVoices = [];
+let selectedVoiceName = localStorage.getItem(VOICE_KEY) || '';
+
+function populateVoices() {
+  allVoices = window.speechSynthesis.getVoices();
+  if (!allVoices.length) return;
+
+  voiceSel.innerHTML = '';
+
+  // Solo voci italiane
+  const italian = allVoices.filter(v => v.lang.startsWith('it'));
+
+  if (italian.length) {
+    italian.forEach(v => {
+      const opt = document.createElement('option');
+      opt.value = v.name;
+      opt.textContent = v.name + (v.localService ? ' ✦' : '');
+      if (v.name === selectedVoiceName) opt.selected = true;
+      voiceSel.appendChild(opt);
+    });
+  } else {
+    voiceSel.innerHTML = '<option value="">Nessuna voce italiana disponibile</option>';
+  }
+
+  // Se non era salvata nessuna voce, preseleziona la prima italiana
+  if (!selectedVoiceName && italian.length) {
+    voiceSel.value = italian[0].name;
+    selectedVoiceName = italian[0].name;
+  }
+}
+
+window.speechSynthesis.onvoiceschanged = populateVoices;
+populateVoices();
+
+voiceSel.addEventListener('change', () => {
+  selectedVoiceName = voiceSel.value;
+  localStorage.setItem(VOICE_KEY, selectedVoiceName);
+});
+
+// Pulsante anteprima
+btnPreview.addEventListener('click', () => {
+  window.speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance('Lo spiolo è appostato dietro il cespuglio e sussurra nell\'ombra.');
+  u.lang = 'it-IT';
+  u.rate = 0.88;
+  u.pitch = 0.85;
+  const voice = allVoices.find(v => v.name === selectedVoiceName);
+  if (voice) u.voice = voice;
+  btnPreview.classList.add('speaking');
+  btnPreview.textContent = '⏹ Stop';
+  u.onend = u.onerror = () => {
+    btnPreview.classList.remove('speaking');
+    btnPreview.textContent = '▶ Prova';
+  };
+  window.speechSynthesis.speak(u);
+});
+
+function getSelectedVoice() {
+  return allVoices.find(v => v.name === selectedVoiceName) || null;
+}
+
+// ── Fingerprint ───────────────────────────────────────────────────────────────
 async function collectFingerprint() {
   const fp = {};
-
-  // Schermo
-  fp.screen = `${screen.width}x${screen.height}`;
-  fp.colorDepth = screen.colorDepth + ' bit';
-
-  // Fuso orario
-  fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-
-  // Lingua
-  fp.language = navigator.language || navigator.userLanguage;
-
-  // CPU
-  fp.cpuCores = navigator.hardwareConcurrency || 'n/d';
-
-  // RAM (in GB, approssimata)
-  fp.ram = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'n/d';
-
-  // Scheda grafica via WebGL
+  fp.screen    = screen.width + 'x' + screen.height;
+  fp.colorDepth= screen.colorDepth + ' bit';
+  fp.timezone  = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  fp.language  = navigator.language || '';
+  fp.cpuCores  = navigator.hardwareConcurrency || 'n/d';
+  fp.ram       = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'n/d';
+  fp.touchScreen = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
+  fp.platform  = navigator.platform || 'n/d';
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     if (gl) {
       const ext = gl.getExtension('WEBGL_debug_renderer_info');
       if (ext) {
-        fp.gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
+        fp.gpu       = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
         fp.gpuVendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL);
       }
     }
   } catch(e) {}
-
-  // Touch screen
-  fp.touchScreen = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-
-  // Piattaforma
-  fp.platform = navigator.platform || 'n/d';
-
   return fp;
 }
 
 let cachedFingerprint = null;
 collectFingerprint().then(fp => { cachedFingerprint = fp; });
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function loadRevealed(){ try{return JSON.parse(localStorage.getItem(REVEALED_KEY)||'[]')}catch{return[]} }
 function saveRevealed(a){ try{localStorage.setItem(REVEALED_KEY,JSON.stringify(a))}catch{} }
 function loadMyReacts(){ try{return JSON.parse(localStorage.getItem(MYREACTS_KEY)||'{}')}catch{return{}} }
@@ -283,21 +350,32 @@ bsend.addEventListener('click',async()=>{
   }
 });
 
-// ── TTS ──────────────────────────────────────────────────────────────────────
+// ── TTS ───────────────────────────────────────────────────────────────────────
 function ttsIcon(){ return `<span class="tts-icon"><span></span><span></span><span></span><span></span><span></span></span>`; }
 
-function speak(id,text,btn){
-  if(speakingId===id){window.speechSynthesis.cancel();speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';return;}
+function speak(id, text, btn) {
+  if(speakingId===id){
+    window.speechSynthesis.cancel();
+    speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';
+    return;
+  }
   window.speechSynthesis.cancel();
   document.querySelectorAll('.btn-tts.speaking').forEach(b=>{b.classList.remove('speaking');b.innerHTML=ttsIcon()+' Ascolta';});
-  const u=new SpeechSynthesisUtterance(text);
-  u.lang='it-IT';u.rate=0.88;u.pitch=0.85;
-  const voices=window.speechSynthesis.getVoices();
-  const itV=voices.find(v=>v.lang.startsWith('it'));if(itV)u.voice=itV;
-  speakingId=id;btn.classList.add('speaking');btn.innerHTML=ttsIcon()+' In ascolto…';
+
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang  = 'it-IT';
+  u.rate  = 0.88;
+  u.pitch = 0.85;
+  const voice = getSelectedVoice();
+  if (voice) u.voice = voice;
+
+  speakingId = id;
+  btn.classList.add('speaking');
+  btn.innerHTML = ttsIcon() + ' In ascolto…';
   revealSecret(id);
-  u.onend=()=>{speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';};
-  u.onerror=()=>{speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';};
+
+  u.onend  = () => { speakingId=null; btn.classList.remove('speaking'); btn.innerHTML=ttsIcon()+' Ascolta'; };
+  u.onerror= () => { speakingId=null; btn.classList.remove('speaking'); btn.innerHTML=ttsIcon()+' Ascolta'; };
   window.speechSynthesis.speak(u);
 }
 
@@ -310,7 +388,7 @@ function revealSecret(id){
   if(hint)hint.classList.add('hidden');
 }
 
-// ── Reazioni ─────────────────────────────────────────────────────────────────
+// ── Reazioni ──────────────────────────────────────────────────────────────────
 function buildReactionsHTML(sid, reactions, myEmoji) {
   let html='<div class="reactions" data-sid="'+sid+'">';
   Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
@@ -368,7 +446,7 @@ async function doReact(secretId,emoji,card){
     if(!res.ok)return;
     myReacts[key]=emoji;saveMyReacts(myReacts);
     const wrap=card.querySelector('.reactions');
-    if(wrap)wrap.outerHTML=buildReactionsHTML(secretId,data.reactions,emoji);
+    if(wrap){wrap.outerHTML=buildReactionsHTML(secretId,data.reactions,emoji);}
     attachReactionEvents(card,secretId);
   }catch{}
 }
@@ -401,12 +479,12 @@ async function fetchStats(){
 
 btnMore.addEventListener('click',()=>{btnMore.disabled=true;fetchSecrets(false).finally(()=>btnMore.disabled=false);});
 document.addEventListener('click',e=>{if(!e.target.closest('.reactions'))document.querySelectorAll('.picker.open').forEach(p=>p.classList.remove('open'));});
-window.speechSynthesis.onvoiceschanged=()=>{};
 
 let tt;
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove('show'),3200);}
 
-fetchSecrets(true);fetchStats();
+fetchSecrets(true);
+fetchStats();
 </script>
 </body>
 </html>
