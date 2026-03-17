@@ -39,11 +39,82 @@ async function initDB() {
       emoji       VARCHAR(10) NOT NULL,
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
-
     ALTER TABLE secrets ADD COLUMN IF NOT EXISTS ip_address VARCHAR(100);
     ALTER TABLE secrets ADD COLUMN IF NOT EXISTS device TEXT;
   `);
   console.log('✅ DB pronto');
+}
+
+// ── Parsing dispositivo dettagliato ──────────────────────────────────────────
+function parseDevice(ua) {
+  if (!ua) return 'Sconosciuto';
+
+  let model   = '';
+  let os      = '';
+  let osVer   = '';
+  let browser = '';
+  let bVer    = '';
+
+  // ── Modello Android (es. "Samsung SM-G991B", "Xiaomi Redmi Note 11") ──
+  const androidModel = ua.match(/\(Linux;.*?;\s*([^)]+?)\s+Build\//);
+  if (androidModel) {
+    model = androidModel[1].trim();
+  }
+
+  // ── OS ──
+  if (/iPhone/.test(ua)) {
+    model = 'iPhone';
+    const v = ua.match(/iPhone OS ([\d_]+)/);
+    osVer = v ? ' iOS ' + v[1].replace(/_/g, '.') : '';
+    os = 'iPhone' + osVer;
+  } else if (/iPad/.test(ua)) {
+    model = 'iPad';
+    const v = ua.match(/CPU OS ([\d_]+)/);
+    osVer = v ? ' iPadOS ' + v[1].replace(/_/g, '.') : '';
+    os = 'iPad' + osVer;
+  } else if (/Android/.test(ua)) {
+    const v = ua.match(/Android ([\d.]+)/);
+    osVer = v ? ' Android ' + v[1] : ' Android';
+    os = (model ? model : 'Android') + osVer;
+  } else if (/Windows NT/.test(ua)) {
+    const versions = {
+      '10.0': '10/11', '6.3': '8.1', '6.2': '8',
+      '6.1': '7', '6.0': 'Vista', '5.1': 'XP'
+    };
+    const v = ua.match(/Windows NT ([\d.]+)/);
+    const winVer = v ? (versions[v[1]] || v[1]) : '';
+    os = 'Windows ' + winVer;
+  } else if (/Macintosh/.test(ua)) {
+    const v = ua.match(/Mac OS X ([\d_]+)/);
+    osVer = v ? ' ' + v[1].replace(/_/g, '.') : '';
+    os = 'Mac' + osVer;
+  } else if (/Linux/.test(ua)) {
+    os = 'Linux';
+  } else {
+    os = 'Sconosciuto';
+  }
+
+  // ── Browser ──
+  if (/Edg\//.test(ua)) {
+    const v = ua.match(/Edg\/([\d.]+)/);
+    browser = 'Edge' + (v ? ' ' + v[1].split('.')[0] : '');
+  } else if (/OPR\//.test(ua)) {
+    const v = ua.match(/OPR\/([\d.]+)/);
+    browser = 'Opera' + (v ? ' ' + v[1].split('.')[0] : '');
+  } else if (/Firefox\//.test(ua)) {
+    const v = ua.match(/Firefox\/([\d.]+)/);
+    browser = 'Firefox' + (v ? ' ' + v[1].split('.')[0] : '');
+  } else if (/Chrome\//.test(ua)) {
+    const v = ua.match(/Chrome\/([\d.]+)/);
+    browser = 'Chrome' + (v ? ' ' + v[1].split('.')[0] : '');
+  } else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) {
+    const v = ua.match(/Version\/([\d.]+)/);
+    browser = 'Safari' + (v ? ' ' + v[1].split('.')[0] : '');
+  } else {
+    browser = 'Browser sconosciuto';
+  }
+
+  return `${os} — ${browser}`;
 }
 
 // GET /api/secrets — NON restituisce ip/device al frontend
@@ -78,7 +149,7 @@ app.get('/api/secrets', async (req, res) => {
   }
 });
 
-// POST /api/secrets — salva IP e dispositivo
+// POST /api/secrets — salva IP e dispositivo dettagliato
 app.post('/api/secrets', postLimiter, async (req, res) => {
   try {
     const { content, category } = req.body;
@@ -90,12 +161,10 @@ app.post('/api/secrets', postLimiter, async (req, res) => {
     const allowed = ['s','p','c','d'];
     const cat = allowed.includes(category) ? category : 's';
 
-    // Ricava IP
     const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
              || req.socket.remoteAddress
              || 'sconosciuto';
 
-    // Ricava dispositivo dall'user agent
     const ua = req.headers['user-agent'] || '';
     const device = parseDevice(ua);
 
@@ -111,27 +180,6 @@ app.post('/api/secrets', postLimiter, async (req, res) => {
     res.status(500).json({ error: 'Errore nella pubblicazione.' });
   }
 });
-
-// Funzione per leggere dispositivo/browser dall'user agent
-function parseDevice(ua) {
-  let os = 'Sconosciuto';
-  let browser = 'Sconosciuto';
-
-  if (/iPhone/.test(ua))           os = 'iPhone';
-  else if (/iPad/.test(ua))        os = 'iPad';
-  else if (/Android/.test(ua))     os = 'Android';
-  else if (/Windows/.test(ua))     os = 'Windows';
-  else if (/Macintosh/.test(ua))   os = 'Mac';
-  else if (/Linux/.test(ua))       os = 'Linux';
-
-  if (/Chrome\//.test(ua) && !/Edg\//.test(ua) && !/OPR\//.test(ua)) browser = 'Chrome';
-  else if (/Safari\//.test(ua) && !/Chrome/.test(ua))                 browser = 'Safari';
-  else if (/Firefox\//.test(ua))   browser = 'Firefox';
-  else if (/Edg\//.test(ua))       browser = 'Edge';
-  else if (/OPR\//.test(ua))       browser = 'Opera';
-
-  return `${os} / ${browser}`;
-}
 
 // POST /api/reactions
 app.post('/api/reactions', async (req, res) => {
