@@ -29,6 +29,8 @@ async function initDB() {
       id          BIGSERIAL PRIMARY KEY,
       content     TEXT NOT NULL CHECK (char_length(content) BETWEEN 10 AND 500),
       category    VARCHAR(10) DEFAULT 's',
+      ip_address  VARCHAR(100),
+      device      TEXT,
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS reactions (
@@ -37,11 +39,14 @@ async function initDB() {
       emoji       VARCHAR(10) NOT NULL,
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
+
+    ALTER TABLE secrets ADD COLUMN IF NOT EXISTS ip_address VARCHAR(100);
+    ALTER TABLE secrets ADD COLUMN IF NOT EXISTS device TEXT;
   `);
   console.log('✅ DB pronto');
 }
 
-// GET /api/secrets
+// GET /api/secrets — NON restituisce ip/device al frontend
 app.get('/api/secrets', async (req, res) => {
   try {
     const limit  = Math.min(parseInt(req.query.limit) || 20, 50);
@@ -73,7 +78,7 @@ app.get('/api/secrets', async (req, res) => {
   }
 });
 
-// POST /api/secrets
+// POST /api/secrets — salva IP e dispositivo
 app.post('/api/secrets', postLimiter, async (req, res) => {
   try {
     const { content, category } = req.body;
@@ -81,11 +86,24 @@ app.post('/api/secrets', postLimiter, async (req, res) => {
     const trimmed = content.trim();
     if (trimmed.length < 10) return res.status(400).json({ error: 'Segreto troppo corto (min 10 caratteri).' });
     if (trimmed.length > 500) return res.status(400).json({ error: 'Segreto troppo lungo (max 500 caratteri).' });
+
     const allowed = ['s','p','c','d'];
     const cat = allowed.includes(category) ? category : 's';
+
+    // Ricava IP
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
+             || req.socket.remoteAddress
+             || 'sconosciuto';
+
+    // Ricava dispositivo dall'user agent
+    const ua = req.headers['user-agent'] || '';
+    const device = parseDevice(ua);
+
     const result = await pool.query(
-      `INSERT INTO secrets (content, category) VALUES ($1, $2) RETURNING id, content, category, created_at`,
-      [trimmed, cat]
+      `INSERT INTO secrets (content, category, ip_address, device)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, content, category, created_at`,
+      [trimmed, cat, ip, device]
     );
     res.status(201).json({ ...result.rows[0], reactions: {} });
   } catch (err) {
@@ -93,6 +111,27 @@ app.post('/api/secrets', postLimiter, async (req, res) => {
     res.status(500).json({ error: 'Errore nella pubblicazione.' });
   }
 });
+
+// Funzione per leggere dispositivo/browser dall'user agent
+function parseDevice(ua) {
+  let os = 'Sconosciuto';
+  let browser = 'Sconosciuto';
+
+  if (/iPhone/.test(ua))           os = 'iPhone';
+  else if (/iPad/.test(ua))        os = 'iPad';
+  else if (/Android/.test(ua))     os = 'Android';
+  else if (/Windows/.test(ua))     os = 'Windows';
+  else if (/Macintosh/.test(ua))   os = 'Mac';
+  else if (/Linux/.test(ua))       os = 'Linux';
+
+  if (/Chrome\//.test(ua) && !/Edg\//.test(ua) && !/OPR\//.test(ua)) browser = 'Chrome';
+  else if (/Safari\//.test(ua) && !/Chrome/.test(ua))                 browser = 'Safari';
+  else if (/Firefox\//.test(ua))   browser = 'Firefox';
+  else if (/Edg\//.test(ua))       browser = 'Edge';
+  else if (/OPR\//.test(ua))       browser = 'Opera';
+
+  return `${os} / ${browser}`;
+}
 
 // POST /api/reactions
 app.post('/api/reactions', async (req, res) => {
