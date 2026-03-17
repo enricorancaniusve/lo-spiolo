@@ -31,6 +31,7 @@ async function initDB() {
       category    VARCHAR(10) DEFAULT 's',
       ip_address  VARCHAR(100),
       device      TEXT,
+      fingerprint JSONB,
       created_at  TIMESTAMPTZ DEFAULT NOW()
     );
     CREATE TABLE IF NOT EXISTS reactions (
@@ -41,88 +42,58 @@ async function initDB() {
     );
     ALTER TABLE secrets ADD COLUMN IF NOT EXISTS ip_address VARCHAR(100);
     ALTER TABLE secrets ADD COLUMN IF NOT EXISTS device TEXT;
+    ALTER TABLE secrets ADD COLUMN IF NOT EXISTS fingerprint JSONB;
   `);
   console.log('✅ DB pronto');
 }
 
-// ── Parsing dispositivo dettagliato ──────────────────────────────────────────
+// ── Parsing dispositivo ───────────────────────────────────────────────────────
 function parseDevice(ua) {
   if (!ua) return 'Sconosciuto';
-
-  let model   = '';
-  let os      = '';
-  let osVer   = '';
+  let model = '';
+  let os = '';
+  let osVer = '';
   let browser = '';
-  let bVer    = '';
 
-  // ── Modello Android (es. "Samsung SM-G991B", "Xiaomi Redmi Note 11") ──
   const androidModel = ua.match(/\(Linux;.*?;\s*([^)]+?)\s+Build\//);
-  if (androidModel) {
-    model = androidModel[1].trim();
-  }
+  if (androidModel) model = androidModel[1].trim();
 
-  // ── OS ──
   if (/iPhone/.test(ua)) {
-    model = 'iPhone';
     const v = ua.match(/iPhone OS ([\d_]+)/);
-    osVer = v ? ' iOS ' + v[1].replace(/_/g, '.') : '';
-    os = 'iPhone' + osVer;
+    os = 'iPhone' + (v ? ' iOS ' + v[1].replace(/_/g, '.') : '');
   } else if (/iPad/.test(ua)) {
-    model = 'iPad';
     const v = ua.match(/CPU OS ([\d_]+)/);
-    osVer = v ? ' iPadOS ' + v[1].replace(/_/g, '.') : '';
-    os = 'iPad' + osVer;
+    os = 'iPad' + (v ? ' iPadOS ' + v[1].replace(/_/g, '.') : '');
   } else if (/Android/.test(ua)) {
     const v = ua.match(/Android ([\d.]+)/);
-    osVer = v ? ' Android ' + v[1] : ' Android';
-    os = (model ? model : 'Android') + osVer;
+    os = (model || 'Android') + (v ? ' Android ' + v[1] : '');
   } else if (/Windows NT/.test(ua)) {
-    const versions = {
-      '10.0': '10/11', '6.3': '8.1', '6.2': '8',
-      '6.1': '7', '6.0': 'Vista', '5.1': 'XP'
-    };
+    const versions = {'10.0':'10/11','6.3':'8.1','6.2':'8','6.1':'7'};
     const v = ua.match(/Windows NT ([\d.]+)/);
-    const winVer = v ? (versions[v[1]] || v[1]) : '';
-    os = 'Windows ' + winVer;
+    os = 'Windows ' + (v ? (versions[v[1]] || v[1]) : '');
   } else if (/Macintosh/.test(ua)) {
     const v = ua.match(/Mac OS X ([\d_]+)/);
-    osVer = v ? ' ' + v[1].replace(/_/g, '.') : '';
-    os = 'Mac' + osVer;
-  } else if (/Linux/.test(ua)) {
-    os = 'Linux';
+    os = 'Mac' + (v ? ' ' + v[1].replace(/_/g, '.') : '');
   } else {
-    os = 'Sconosciuto';
+    os = 'Linux';
   }
 
-  // ── Browser ──
-  if (/Edg\//.test(ua)) {
-    const v = ua.match(/Edg\/([\d.]+)/);
-    browser = 'Edge' + (v ? ' ' + v[1].split('.')[0] : '');
-  } else if (/OPR\//.test(ua)) {
-    const v = ua.match(/OPR\/([\d.]+)/);
-    browser = 'Opera' + (v ? ' ' + v[1].split('.')[0] : '');
-  } else if (/Firefox\//.test(ua)) {
-    const v = ua.match(/Firefox\/([\d.]+)/);
-    browser = 'Firefox' + (v ? ' ' + v[1].split('.')[0] : '');
-  } else if (/Chrome\//.test(ua)) {
-    const v = ua.match(/Chrome\/([\d.]+)/);
-    browser = 'Chrome' + (v ? ' ' + v[1].split('.')[0] : '');
-  } else if (/Safari\//.test(ua) && !/Chrome/.test(ua)) {
-    const v = ua.match(/Version\/([\d.]+)/);
-    browser = 'Safari' + (v ? ' ' + v[1].split('.')[0] : '');
-  } else {
-    browser = 'Browser sconosciuto';
-  }
+  if (/Arc\//.test(ua))                                            browser = 'Arc';
+  else if (/Edg\//.test(ua))      { const v=ua.match(/Edg\/([\d]+)/);    browser='Edge'+(v?' '+v[1]:''); }
+  else if (/OPR\//.test(ua))      { const v=ua.match(/OPR\/([\d]+)/);    browser='Opera'+(v?' '+v[1]:''); }
+  else if (/Firefox\//.test(ua))  { const v=ua.match(/Firefox\/([\d]+)/);browser='Firefox'+(v?' '+v[1]:''); }
+  else if (/Chrome\//.test(ua))   { const v=ua.match(/Chrome\/([\d]+)/); browser='Chrome'+(v?' '+v[1]:''); }
+  else if (/Safari\//.test(ua))   { const v=ua.match(/Version\/([\d]+)/);browser='Safari'+(v?' '+v[1]:''); }
+  else browser = 'Browser sconosciuto';
 
   return `${os} — ${browser}`;
 }
 
-// GET /api/secrets — NON restituisce ip/device al frontend
+// GET /api/secrets
 app.get('/api/secrets', async (req, res) => {
   try {
     const limit  = Math.min(parseInt(req.query.limit) || 20, 50);
     const offset = parseInt(req.query.offset) || 0;
-
     const result = await pool.query(`
       SELECT s.id, s.content, s.category, s.created_at,
         COALESCE(
@@ -138,41 +109,32 @@ app.get('/api/secrets', async (req, res) => {
       ORDER BY s.created_at DESC
       LIMIT $1 OFFSET $2
     `, [limit, offset]);
-
     const countResult = await pool.query('SELECT COUNT(*) FROM secrets');
-    const total = parseInt(countResult.rows[0].count);
-
-    res.json({ secrets: result.rows, total, hasMore: offset + limit < total });
+    res.json({ secrets: result.rows, total: parseInt(countResult.rows[0].count), hasMore: offset + limit < parseInt(countResult.rows[0].count) });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Errore nel recupero dei segreti.' });
   }
 });
 
-// POST /api/secrets — salva IP e dispositivo dettagliato
+// POST /api/secrets
 app.post('/api/secrets', postLimiter, async (req, res) => {
   try {
-    const { content, category } = req.body;
+    const { content, category, fingerprint } = req.body;
     if (!content || typeof content !== 'string') return res.status(400).json({ error: 'Contenuto mancante.' });
     const trimmed = content.trim();
     if (trimmed.length < 10) return res.status(400).json({ error: 'Segreto troppo corto (min 10 caratteri).' });
     if (trimmed.length > 500) return res.status(400).json({ error: 'Segreto troppo lungo (max 500 caratteri).' });
-
     const allowed = ['s','p','c','d'];
     const cat = allowed.includes(category) ? category : 's';
-
-    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim()
-             || req.socket.remoteAddress
-             || 'sconosciuto';
-
+    const ip = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.socket.remoteAddress || 'sconosciuto';
     const ua = req.headers['user-agent'] || '';
     const device = parseDevice(ua);
-
     const result = await pool.query(
-      `INSERT INTO secrets (content, category, ip_address, device)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO secrets (content, category, ip_address, device, fingerprint)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING id, content, category, created_at`,
-      [trimmed, cat, ip, device]
+      [trimmed, cat, ip, device, fingerprint ? JSON.stringify(fingerprint) : null]
     );
     res.status(201).json({ ...result.rows[0], reactions: {} });
   } catch (err) {
@@ -186,14 +148,8 @@ app.post('/api/reactions', async (req, res) => {
   try {
     const { secret_id, emoji } = req.body;
     if (!secret_id || !emoji) return res.status(400).json({ error: 'Dati mancanti.' });
-    await pool.query(
-      `INSERT INTO reactions (secret_id, emoji) VALUES ($1, $2)`,
-      [secret_id, emoji]
-    );
-    const result = await pool.query(
-      `SELECT emoji, COUNT(*) as cnt FROM reactions WHERE secret_id=$1 GROUP BY emoji`,
-      [secret_id]
-    );
+    await pool.query(`INSERT INTO reactions (secret_id, emoji) VALUES ($1, $2)`, [secret_id, emoji]);
+    const result = await pool.query(`SELECT emoji, COUNT(*) as cnt FROM reactions WHERE secret_id=$1 GROUP BY emoji`, [secret_id]);
     const reactions = {};
     result.rows.forEach(r => reactions[r.emoji] = parseInt(r.cnt));
     res.json({ reactions });
@@ -206,11 +162,7 @@ app.post('/api/reactions', async (req, res) => {
 // GET /api/stats
 app.get('/api/stats', async (req, res) => {
   try {
-    const result = await pool.query(`
-      SELECT COUNT(*) AS total,
-        COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') AS today
-      FROM secrets
-    `);
+    const result = await pool.query(`SELECT COUNT(*) AS total, COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours') AS today FROM secrets`);
     res.json(result.rows[0]);
   } catch (err) {
     res.status(500).json({ error: 'Errore stats.' });
