@@ -46,8 +46,6 @@
     .btn-send:disabled{opacity:.28;cursor:not-allowed}
     .fmsg{margin-top:10px;font-size:.88rem;font-style:italic;min-height:18px}
     .fmsg.err{color:var(--amber)}.fmsg.ok{color:var(--green)}
-
-    /* ── Voice selector ── */
     .voice-bar{display:flex;align-items:center;gap:10px;margin-bottom:28px;background:var(--surface);border:1px solid var(--border);border-radius:2px;padding:14px 20px;flex-wrap:wrap}
     .voice-label{font-family:'Cinzel',serif;font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--dim);white-space:nowrap}
     .voice-select{flex:1;min-width:160px;background:#0a1208;border:1px solid rgba(80,160,60,.2);color:var(--text);font-family:'Crimson Pro',Georgia,serif;font-size:.9rem;font-style:italic;padding:6px 10px;border-radius:1px;outline:none;cursor:pointer;transition:border-color .2s}
@@ -55,7 +53,6 @@
     .btn-preview{background:transparent;border:1px solid rgba(80,160,60,.2);color:var(--dim);font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;padding:6px 14px;border-radius:1px;cursor:pointer;transition:all .2s;white-space:nowrap}
     .btn-preview:hover{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.08)}
     .btn-preview.speaking{border-color:var(--green);color:var(--green);animation:glow 1s ease-in-out infinite}
-
     .fhead{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:20px}
     .ftitle{font-family:'Cinzel',serif;font-size:.63rem;letter-spacing:.22em;text-transform:uppercase;color:var(--dim)}
     .finfo{font-size:.73rem;color:var(--ghost)}
@@ -78,6 +75,7 @@
     .btn-tts{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(80,160,60,.2);color:var(--dim);font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;padding:5px 12px;border-radius:1px;cursor:pointer;transition:all .25s}
     .btn-tts:hover{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.08)}
     .btn-tts.speaking{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.12);animation:glow 1s ease-in-out infinite}
+    .btn-tts:disabled{opacity:.3;cursor:not-allowed}
     @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(106,191,75,0)}50%{box-shadow:0 0 8px 2px rgba(106,191,75,.2)}}
     .tts-icon{display:flex;align-items:center;gap:2px;height:12px}
     .tts-icon span{display:inline-block;width:2px;background:currentColor;border-radius:2px}
@@ -150,12 +148,9 @@
     <p>Lo spiolo fotografa le mucche che si tolgono il reggiseno, va a spiare i fidanzamenti dei gabbiani sulla spiaggia, guarda nei frigoriferi, apre la posta, fruga nella spazzatura, sbircia dalla serratura… e poi racconta, maligno, a un altro spiolo, nella catena infinita del pettegolezzo spiolico.</p>
   </div>
 
-  <!-- Selettore voce -->
   <div class="voice-bar">
     <span class="voice-label">🔊 Voce dello spiolo</span>
-    <select class="voice-select" id="voice-select">
-      <option value="">Caricamento voci…</option>
-    </select>
+    <select class="voice-select" id="voice-select"><option value="">Caricamento voci…</option></select>
     <button class="btn-preview" id="btn-preview">▶ Prova</button>
   </div>
 
@@ -184,18 +179,18 @@
   <div id="feed"></div>
   <button class="btn-more" id="btn-more" style="display:none">Mostra altri sussurri</button>
 </div>
-
 <div class="toast" id="toast"></div>
 
 <script>
 const API = '/api';
 const EMOJI_LIST = ['😱','🤭','😂','🔥','💀','🫢','👀','😈','🤯','💔','🫣','🤡','💅','🐍','🫠'];
 const catNames = {s:'👁 Spiólata', p:'📸 Flagrante', c:'✉ Lettera anonima', d:'🌿 Dal cespuglio'};
-const REVEALED_KEY  = 'spiolo_revealed';
-const MYREACTS_KEY  = 'spiolo_myreacts';
-const VOICE_KEY     = 'spiolo_voice';
+const REVEALED_KEY = 'spiolo_revealed';
+const MYREACTS_KEY = 'spiolo_myreacts';
+const VOICE_KEY    = 'spiolo_voice_id';
 
-let selCat = 's', offset = 0, total = 0, speakingId = null;
+let selCat = 's', offset = 0, total = 0;
+let currentAudio = null, speakingId = null;
 const LIMIT = 15;
 
 const inp       = document.getElementById('inp');
@@ -209,95 +204,126 @@ const toast     = document.getElementById('toast');
 const voiceSel  = document.getElementById('voice-select');
 const btnPreview= document.getElementById('btn-preview');
 
-// ── Voci ─────────────────────────────────────────────────────────────────────
-let allVoices = [];
-let selectedVoiceName = localStorage.getItem(VOICE_KEY) || '';
+// ── Voci ElevenLabs ───────────────────────────────────────────────────────────
+let savedVoiceId = localStorage.getItem(VOICE_KEY) || '';
 
-function populateVoices() {
-  allVoices = window.speechSynthesis.getVoices();
-  if (!allVoices.length) return;
-
-  voiceSel.innerHTML = '';
-
-  // Solo voci italiane
-  const italian = allVoices.filter(v => v.lang.startsWith('it'));
-
-  if (italian.length) {
-    italian.forEach(v => {
+async function loadVoices() {
+  try {
+    const res  = await fetch(`${API}/voices`);
+    const data = await res.json();
+    const voices = data.voices || [];
+    voiceSel.innerHTML = '';
+    if (!voices.length) {
+      voiceSel.innerHTML = '<option value="">Nessuna voce disponibile</option>';
+      return;
+    }
+    voices.forEach(v => {
       const opt = document.createElement('option');
-      opt.value = v.name;
-      opt.textContent = v.name + (v.localService ? ' ✦' : '');
-      if (v.name === selectedVoiceName) opt.selected = true;
+      opt.value = v.id;
+      opt.textContent = v.name;
+      if (v.id === savedVoiceId) opt.selected = true;
       voiceSel.appendChild(opt);
     });
-  } else {
-    voiceSel.innerHTML = '<option value="">Nessuna voce italiana disponibile</option>';
-  }
-
-  // Se non era salvata nessuna voce, preseleziona la prima italiana
-  if (!selectedVoiceName && italian.length) {
-    voiceSel.value = italian[0].name;
-    selectedVoiceName = italian[0].name;
+    if (!savedVoiceId) savedVoiceId = voiceSel.value;
+  } catch {
+    voiceSel.innerHTML = '<option value="">Errore caricamento voci</option>';
   }
 }
 
-window.speechSynthesis.onvoiceschanged = populateVoices;
-populateVoices();
-
 voiceSel.addEventListener('change', () => {
-  selectedVoiceName = voiceSel.value;
-  localStorage.setItem(VOICE_KEY, selectedVoiceName);
+  savedVoiceId = voiceSel.value;
+  localStorage.setItem(VOICE_KEY, savedVoiceId);
 });
 
-// Pulsante anteprima
-btnPreview.addEventListener('click', () => {
-  window.speechSynthesis.cancel();
-  const u = new SpeechSynthesisUtterance('Lo spiolo è appostato dietro il cespuglio e sussurra nell\'ombra.');
-  u.lang = 'it-IT';
-  u.rate = 0.88;
-  u.pitch = 0.85;
-  const voice = allVoices.find(v => v.name === selectedVoiceName);
-  if (voice) u.voice = voice;
+btnPreview.addEventListener('click', async () => {
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; btnPreview.classList.remove('speaking'); btnPreview.textContent = '▶ Prova'; return; }
   btnPreview.classList.add('speaking');
-  btnPreview.textContent = '⏹ Stop';
-  u.onend = u.onerror = () => {
+  btnPreview.textContent = '⏳ Carico…';
+  try {
+    const audio = await fetchTTS('Lo spiolo è appostato dietro il cespuglio e sussurra nell\'ombra.', savedVoiceId);
+    currentAudio = audio;
+    btnPreview.textContent = '⏹ Stop';
+    audio.play();
+    audio.onended = () => { currentAudio = null; btnPreview.classList.remove('speaking'); btnPreview.textContent = '▶ Prova'; };
+  } catch {
     btnPreview.classList.remove('speaking');
     btnPreview.textContent = '▶ Prova';
-  };
-  window.speechSynthesis.speak(u);
+    showToast('Errore nel caricamento audio');
+  }
 });
 
-function getSelectedVoice() {
-  return allVoices.find(v => v.name === selectedVoiceName) || null;
+// ── TTS fetch ─────────────────────────────────────────────────────────────────
+async function fetchTTS(text, voiceId) {
+  const res = await fetch(`${API}/tts`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice_id: voiceId })
+  });
+  if (!res.ok) throw new Error('Errore TTS');
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  return new Audio(url);
+}
+
+async function speak(id, text, btn) {
+  if (speakingId === id) {
+    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+    speakingId = null;
+    btn.classList.remove('speaking');
+    btn.innerHTML = ttsIcon() + ' Ascolta';
+    return;
+  }
+  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
+  document.querySelectorAll('.btn-tts.speaking').forEach(b => { b.classList.remove('speaking'); b.innerHTML = ttsIcon() + ' Ascolta'; });
+
+  speakingId = id;
+  btn.classList.add('speaking');
+  btn.innerHTML = ttsIcon() + ' Carico…';
+  btn.disabled = true;
+  revealSecret(id);
+
+  try {
+    const audio = await fetchTTS(text, savedVoiceId);
+    currentAudio = audio;
+    btn.innerHTML = ttsIcon() + ' In ascolto…';
+    btn.disabled = false;
+    audio.play();
+    audio.onended = () => {
+      currentAudio = null; speakingId = null;
+      btn.classList.remove('speaking');
+      btn.innerHTML = ttsIcon() + ' Ascolta';
+    };
+  } catch {
+    speakingId = null;
+    btn.classList.remove('speaking');
+    btn.innerHTML = ttsIcon() + ' Ascolta';
+    btn.disabled = false;
+    showToast('Errore audio. Riprova.');
+  }
 }
 
 // ── Fingerprint ───────────────────────────────────────────────────────────────
 async function collectFingerprint() {
   const fp = {};
-  fp.screen    = screen.width + 'x' + screen.height;
-  fp.colorDepth= screen.colorDepth + ' bit';
-  fp.timezone  = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  fp.language  = navigator.language || '';
-  fp.cpuCores  = navigator.hardwareConcurrency || 'n/d';
-  fp.ram       = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'n/d';
+  fp.screen = screen.width + 'x' + screen.height;
+  fp.timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  fp.language = navigator.language || '';
+  fp.cpuCores = navigator.hardwareConcurrency || 'n/d';
+  fp.ram = navigator.deviceMemory ? navigator.deviceMemory + ' GB' : 'n/d';
   fp.touchScreen = ('ontouchstart' in window) || navigator.maxTouchPoints > 0;
-  fp.platform  = navigator.platform || 'n/d';
+  fp.platform = navigator.platform || 'n/d';
   try {
     const canvas = document.createElement('canvas');
     const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
     if (gl) {
       const ext = gl.getExtension('WEBGL_debug_renderer_info');
-      if (ext) {
-        fp.gpu       = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL);
-        fp.gpuVendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL);
-      }
+      if (ext) { fp.gpu = gl.getParameter(ext.UNMASKED_RENDERER_WEBGL); fp.gpuVendor = gl.getParameter(ext.UNMASKED_VENDOR_WEBGL); }
     }
   } catch(e) {}
   return fp;
 }
-
-let cachedFingerprint = null;
-collectFingerprint().then(fp => { cachedFingerprint = fp; });
+let cachedFP = null;
+collectFingerprint().then(fp => { cachedFP = fp; });
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function loadRevealed(){ try{return JSON.parse(localStorage.getItem(REVEALED_KEY)||'[]')}catch{return[]} }
@@ -307,11 +333,10 @@ function saveMyReacts(r){ try{localStorage.setItem(MYREACTS_KEY,JSON.stringify(r
 function esc(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
 function relTime(iso){
   const d=Math.floor((Date.now()-new Date(iso))/1000);
-  if(d<60)return'un momento fa';
-  if(d<3600)return Math.floor(d/60)+' minuti fa';
-  if(d<86400)return Math.floor(d/3600)+' ore fa';
-  return Math.floor(d/86400)+' giorni fa';
+  if(d<60)return'un momento fa';if(d<3600)return Math.floor(d/60)+' minuti fa';
+  if(d<86400)return Math.floor(d/3600)+' ore fa';return Math.floor(d/86400)+' giorni fa';
 }
+function ttsIcon(){ return `<span class="tts-icon"><span></span><span></span><span></span><span></span><span></span></span>`; }
 
 document.getElementById('cats').addEventListener('click',e=>{
   const b=e.target.closest('.cat');if(!b)return;
@@ -320,95 +345,47 @@ document.getElementById('cats').addEventListener('click',e=>{
 });
 
 inp.addEventListener('input',()=>{
-  const l=inp.value.length;
-  cc.textContent=l+' / 500';
-  cc.classList.toggle('warn',l>450);
-  bsend.disabled=l<10;
-  fmsg.textContent='';
+  const l=inp.value.length;cc.textContent=l+' / 500';
+  cc.classList.toggle('warn',l>450);bsend.disabled=l<10;fmsg.textContent='';
 });
 
 bsend.addEventListener('click',async()=>{
-  const content=inp.value.trim();
-  if(content.length<10)return;
+  const content=inp.value.trim();if(content.length<10)return;
   bsend.disabled=true;
   try{
-    const res=await fetch(`${API}/secrets`,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({content, category:selCat, fingerprint: cachedFingerprint})
-    });
-    const data=await res.json();
-    if(!res.ok)throw new Error(data.error||'Errore');
+    const res=await fetch(`${API}/secrets`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({content,category:selCat,fingerprint:cachedFP})});
+    const data=await res.json();if(!res.ok)throw new Error(data.error||'Errore');
     inp.value='';cc.textContent='0 / 500';
     fmsg.className='fmsg ok';fmsg.textContent='✦ Lo spiolo ha sussurrato nell\'ombra.';
     showToast('Spiólata consegnata alla catena');
     prependCard(data);total++;updateCount();fetchStats();
-  }catch(err){
-    fmsg.className='fmsg err';fmsg.textContent=err.message;
-  }finally{
-    bsend.disabled=inp.value.length<10;
-  }
+  }catch(err){fmsg.className='fmsg err';fmsg.textContent=err.message;}
+  finally{bsend.disabled=inp.value.length<10;}
 });
 
-// ── TTS ───────────────────────────────────────────────────────────────────────
-function ttsIcon(){ return `<span class="tts-icon"><span></span><span></span><span></span><span></span><span></span></span>`; }
-
-function speak(id, text, btn) {
-  if(speakingId===id){
-    window.speechSynthesis.cancel();
-    speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';
-    return;
-  }
-  window.speechSynthesis.cancel();
-  document.querySelectorAll('.btn-tts.speaking').forEach(b=>{b.classList.remove('speaking');b.innerHTML=ttsIcon()+' Ascolta';});
-
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang  = 'it-IT';
-  u.rate  = 0.88;
-  u.pitch = 0.85;
-  const voice = getSelectedVoice();
-  if (voice) u.voice = voice;
-
-  speakingId = id;
-  btn.classList.add('speaking');
-  btn.innerHTML = ttsIcon() + ' In ascolto…';
-  revealSecret(id);
-
-  u.onend  = () => { speakingId=null; btn.classList.remove('speaking'); btn.innerHTML=ttsIcon()+' Ascolta'; };
-  u.onerror= () => { speakingId=null; btn.classList.remove('speaking'); btn.innerHTML=ttsIcon()+' Ascolta'; };
-  window.speechSynthesis.speak(u);
-}
-
 function revealSecret(id){
-  const rev=loadRevealed();
-  if(!rev.includes(id)){rev.push(id);saveRevealed(rev);}
+  const rev=loadRevealed();if(!rev.includes(id)){rev.push(id);saveRevealed(rev);}
   const el=document.querySelector(`.ctext[data-id="${id}"]`);
   const hint=document.querySelector(`.hint[data-id="${id}"]`);
   if(el&&el.classList.contains('censored')){el.classList.remove('censored');el.classList.add('revealed');}
   if(hint)hint.classList.add('hidden');
 }
 
-// ── Reazioni ──────────────────────────────────────────────────────────────────
-function buildReactionsHTML(sid, reactions, myEmoji) {
+function buildReactionsHTML(sid,reactions,myEmoji){
   let html='<div class="reactions" data-sid="'+sid+'">';
   Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
     html+=`<button class="r-btn${myEmoji===emoji?' reacted':''}" data-emoji="${emoji}" data-sid="${sid}"><span>${emoji}</span><span class="r-count">${count}</span></button>`;
   });
   html+=`<button class="r-add" data-sid="${sid}">+ 😶</button>`;
   html+=`<div class="picker" id="picker-${sid}">`;
-  EMOJI_LIST.forEach(e=>{ html+=`<button class="p-emoji" data-emoji="${e}" data-sid="${sid}">${e}</button>`; });
-  html+='</div></div>';
-  return html;
+  EMOJI_LIST.forEach(e=>{html+=`<button class="p-emoji" data-emoji="${e}" data-sid="${sid}">${e}</button>`;});
+  html+='</div></div>';return html;
 }
 
 function buildCard(s){
-  const revealed=loadRevealed();
-  const myReacts=loadMyReacts();
-  const isRev=revealed.includes(s.id);
-  const reactions=s.reactions||{};
-  const myEmoji=myReacts[s.id+''];
-  const card=document.createElement('div');
-  card.className=`card ${s.category}`;
+  const revealed=loadRevealed();const myReacts=loadMyReacts();
+  const isRev=revealed.includes(s.id);const reactions=s.reactions||{};const myEmoji=myReacts[s.id+''];
+  const card=document.createElement('div');card.className=`card ${s.category}`;
   card.innerHTML=`
     <span class="eye">👁</span>
     <div class="ccat ${s.category}">${catNames[s.category]}</div>
@@ -418,11 +395,10 @@ function buildCard(s){
       <span class="ctime">Spiólato ${relTime(s.created_at)}</span>
       <button class="btn-tts" data-id="${s.id}">${ttsIcon()} Ascolta</button>
     </div>
-    ${buildReactionsHTML(s.id, reactions, myEmoji)}
+    ${buildReactionsHTML(s.id,reactions,myEmoji)}
   `;
   card.querySelector('.btn-tts').addEventListener('click',function(){speak(s.id,s.content,this);});
-  attachReactionEvents(card,s.id);
-  return card;
+  attachReactionEvents(card,s.id);return card;
 }
 
 function attachReactionEvents(card,sid){
@@ -431,32 +407,24 @@ function attachReactionEvents(card,sid){
     if(addBtn){const p=document.getElementById('picker-'+sid);document.querySelectorAll('.picker.open').forEach(x=>{if(x!==p)x.classList.remove('open')});p.classList.toggle('open');return;}
     const pEmoji=e.target.closest('.p-emoji');
     if(pEmoji){await doReact(sid,pEmoji.dataset.emoji,card);document.getElementById('picker-'+sid).classList.remove('open');return;}
-    const rBtn=e.target.closest('.r-btn');
-    if(rBtn)await doReact(sid,rBtn.dataset.emoji,card);
+    const rBtn=e.target.closest('.r-btn');if(rBtn)await doReact(sid,rBtn.dataset.emoji,card);
   });
 }
 
 async function doReact(secretId,emoji,card){
-  const myReacts=loadMyReacts();
-  const key=secretId+'';
-  if(myReacts[key]===emoji)return;
+  const myReacts=loadMyReacts();const key=secretId+'';if(myReacts[key]===emoji)return;
   try{
     const res=await fetch(`${API}/reactions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret_id:secretId,emoji})});
-    const data=await res.json();
-    if(!res.ok)return;
+    const data=await res.json();if(!res.ok)return;
     myReacts[key]=emoji;saveMyReacts(myReacts);
-    const wrap=card.querySelector('.reactions');
-    if(wrap){wrap.outerHTML=buildReactionsHTML(secretId,data.reactions,emoji);}
+    const wrap=card.querySelector('.reactions');if(wrap){wrap.outerHTML=buildReactionsHTML(secretId,data.reactions,emoji);}
     attachReactionEvents(card,secretId);
   }catch{}
 }
 
-function appendCard(s){ feed.appendChild(buildCard(s)); }
-function prependCard(s){
-  const empty=feed.querySelector('.empty');if(empty)empty.remove();
-  feed.insertBefore(buildCard(s),feed.firstChild);
-}
-function updateCount(){ fi.textContent=total>0?total+' spiólate':''; }
+function appendCard(s){feed.appendChild(buildCard(s));}
+function prependCard(s){const empty=feed.querySelector('.empty');if(empty)empty.remove();feed.insertBefore(buildCard(s),feed.firstChild);}
+function updateCount(){fi.textContent=total>0?total+' spiólate':'';}
 
 async function fetchSecrets(reset=false){
   if(reset){offset=0;feed.innerHTML='';}
@@ -464,12 +432,10 @@ async function fetchSecrets(reset=false){
   if(reset)feed.appendChild(spinner);
   try{
     const res=await fetch(`${API}/secrets?limit=${LIMIT}&offset=${offset}`);
-    const data=await res.json();
-    total=data.total;spinner.remove();
+    const data=await res.json();total=data.total;spinner.remove();
     if(data.secrets.length===0&&offset===0){feed.innerHTML='<p class="empty">Nessuno spiolo ha ancora parlato. Il cespuglio è silenzioso.</p>';}
     else{data.secrets.forEach(s=>appendCard(s));offset+=data.secrets.length;}
-    updateCount();
-    btnMore.style.display=data.hasMore?'block':'none';
+    updateCount();btnMore.style.display=data.hasMore?'block':'none';
   }catch{spinner.remove();if(offset===0)feed.innerHTML='<p class="empty">Errore di caricamento. Riprova.</p>';}
 }
 
@@ -483,6 +449,7 @@ document.addEventListener('click',e=>{if(!e.target.closest('.reactions'))documen
 let tt;
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove('show'),3200);}
 
+loadVoices();
 fetchSecrets(true);
 fetchStats();
 </script>
