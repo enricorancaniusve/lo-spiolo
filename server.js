@@ -26,7 +26,7 @@ const postLimiter = rateLimit({
 const ttsLimiter = rateLimit({
   windowMs: 60 * 1000,
   max: 20,
-  message: { error: 'Tropte richieste audio. Aspetta un momento.' },
+  message: { error: 'Troppe richieste audio. Aspetta un momento.' },
 });
 
 async function initDB() {
@@ -56,9 +56,7 @@ async function initDB() {
 // ── Parsing dispositivo ───────────────────────────────────────────────────────
 function parseDevice(ua) {
   if (!ua) return 'Sconosciuto';
-  let model = '';
-  let os = '';
-  let browser = '';
+  let model = '', os = '', browser = '';
   const androidModel = ua.match(/\(Linux;.*?;\s*([^)]+?)\s+Build\//);
   if (androidModel) model = androidModel[1].trim();
   if (/iPhone/.test(ua)) { const v=ua.match(/iPhone OS ([\d_]+)/); os='iPhone'+(v?' iOS '+v[1].replace(/_/g,'.'):''); }
@@ -115,7 +113,38 @@ app.post('/api/secrets', postLimiter, async (req, res) => {
   } catch (err) { console.error(err); res.status(500).json({ error: 'Errore.' }); }
 });
 
-// POST /api/tts — ElevenLabs TTS proxy (la chiave resta sul server)
+// GET /api/voices — tutte le voci del account ElevenLabs
+app.get('/api/voices', async (req, res) => {
+  try {
+    const apiKey = process.env.ELEVENLABS_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'Chiave non configurata.' });
+
+    const response = await fetch('https://api.elevenlabs.io/v1/voices', {
+      headers: { 'xi-api-key': apiKey }
+    });
+
+    if (!response.ok) {
+      const err = await response.text();
+      console.error('ElevenLabs voices error:', err);
+      return res.status(500).json({ error: 'Errore ElevenLabs.' });
+    }
+
+    const data = await response.json();
+    const voices = (data.voices || []).map(v => ({
+      id: v.voice_id,
+      name: v.name,
+      category: v.category || '',
+      labels: v.labels || {}
+    }));
+
+    res.json({ voices });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Errore nel recupero voci.' });
+  }
+});
+
+// POST /api/tts — proxy TTS ElevenLabs
 app.post('/api/tts', ttsLimiter, async (req, res) => {
   try {
     const { text, voice_id } = req.body;
@@ -124,8 +153,8 @@ app.post('/api/tts', ttsLimiter, async (req, res) => {
     const apiKey = process.env.ELEVENLABS_KEY;
     if (!apiKey) return res.status(500).json({ error: 'Chiave ElevenLabs non configurata.' });
 
-    // Voce italiana di default: Giovanni (naturale, maschile)
-    const vid = voice_id || 'zcAOhNBS3c14rBihAFp1';
+    // Voce di default: Rachel (premade, multilingua)
+    const vid = voice_id || '21m00Tcm4TlvDq8ikWAM';
 
     const response = await fetch(`https://api.elevenlabs.io/v1/text-to-speech/${vid}`, {
       method: 'POST',
@@ -143,7 +172,7 @@ app.post('/api/tts', ttsLimiter, async (req, res) => {
 
     if (!response.ok) {
       const err = await response.text();
-      console.error('ElevenLabs error:', err);
+      console.error('ElevenLabs TTS error:', err);
       return res.status(500).json({ error: 'Errore ElevenLabs.' });
     }
 
@@ -153,31 +182,6 @@ app.post('/api/tts', ttsLimiter, async (req, res) => {
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Errore TTS.' });
-  }
-});
-
-// GET /api/voices — lista voci italiane disponibili
-app.get('/api/voices', async (req, res) => {
-  try {
-    const apiKey = process.env.ELEVENLABS_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'Chiave non configurata.' });
-    const response = await fetch('https://api.elevenlabs.io/v1/voices', {
-      headers: { 'xi-api-key': apiKey }
-    });
-    const data = await response.json();
-    // Filtra voci che supportano italiano o sono multilingua
-    const voices = (data.voices || [])
-      .filter(v => {
-        const labels = Object.values(v.labels || {}).join(' ').toLowerCase();
-        const name = (v.name || '').toLowerCase();
-        return labels.includes('italian') || labels.includes('italiano') ||
-               name.includes('italian') || name.includes('giovanni') ||
-               name.includes('matilda') || v.category === 'premade';
-      })
-      .map(v => ({ id: v.voice_id, name: v.name, labels: v.labels }));
-    res.json({ voices });
-  } catch (err) {
-    res.status(500).json({ error: 'Errore nel recupero voci.' });
   }
 });
 
