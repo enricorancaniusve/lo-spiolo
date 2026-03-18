@@ -75,7 +75,6 @@
     .btn-tts{display:flex;align-items:center;gap:6px;background:transparent;border:1px solid rgba(80,160,60,.2);color:var(--dim);font-family:'Cinzel',serif;font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;padding:5px 12px;border-radius:1px;cursor:pointer;transition:all .25s}
     .btn-tts:hover{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.08)}
     .btn-tts.speaking{border-color:var(--green);color:var(--green);background:rgba(80,160,60,.12);animation:glow 1s ease-in-out infinite}
-    .btn-tts:disabled{opacity:.3;cursor:not-allowed}
     @keyframes glow{0%,100%{box-shadow:0 0 0 0 rgba(106,191,75,0)}50%{box-shadow:0 0 8px 2px rgba(106,191,75,.2)}}
     .tts-icon{display:flex;align-items:center;gap:2px;height:12px}
     .tts-icon span{display:inline-block;width:2px;background:currentColor;border-radius:2px}
@@ -187,10 +186,18 @@ const EMOJI_LIST = ['😱','🤭','😂','🔥','💀','🫢','👀','😈','�
 const catNames = {s:'👁 Spiólata', p:'📸 Flagrante', c:'✉ Lettera anonima', d:'🌿 Dal cespuglio'};
 const REVEALED_KEY = 'spiolo_revealed';
 const MYREACTS_KEY = 'spiolo_myreacts';
-const VOICE_KEY    = 'spiolo_voice_id';
+const VOICE_KEY    = 'spiolo_voice_name';
 
-let selCat = 's', offset = 0, total = 0;
-let currentAudio = null, speakingId = null;
+// Nomi spiolici assegnati in ordine alle voci italiane trovate
+const SPIOLO_NAMES = [
+  'Lo Spiolo Anziano', 'La Vecchia Cornacchia', 'Il Bisbigliatore',
+  'La Guardona', 'Il Ficcanaso', 'La Linguaccia',
+  'Il Mormorio', 'La Serpe del Villaggio', 'Lo Sbirciatore',
+  'Il Pettegolo Notturno', 'La Voce del Cespuglio', 'L\'Orecchio Lungo'
+];
+
+let selCat = 's', offset = 0, total = 0, speakingId = null;
+let allVoices = [], selectedVoiceName = localStorage.getItem(VOICE_KEY) || '';
 const LIMIT = 15;
 
 const inp       = document.getElementById('inp');
@@ -204,103 +211,67 @@ const toast     = document.getElementById('toast');
 const voiceSel  = document.getElementById('voice-select');
 const btnPreview= document.getElementById('btn-preview');
 
-// ── Voci ElevenLabs ───────────────────────────────────────────────────────────
-let savedVoiceId = localStorage.getItem(VOICE_KEY) || '';
-
-async function loadVoices() {
-  try {
-    const res  = await fetch(`${API}/voices`);
-    const data = await res.json();
-    const voices = data.voices || [];
-    voiceSel.innerHTML = '';
-    if (!voices.length) {
-      voiceSel.innerHTML = '<option value="">Nessuna voce disponibile</option>';
-      return;
-    }
-    voices.forEach(v => {
-      const opt = document.createElement('option');
-      opt.value = v.id;
-      opt.textContent = v.name;
-      if (v.id === savedVoiceId) opt.selected = true;
-      voiceSel.appendChild(opt);
-    });
-    if (!savedVoiceId) savedVoiceId = voiceSel.value;
-  } catch {
-    voiceSel.innerHTML = '<option value="">Errore caricamento voci</option>';
-  }
-}
-
-voiceSel.addEventListener('change', () => {
-  savedVoiceId = voiceSel.value;
-  localStorage.setItem(VOICE_KEY, savedVoiceId);
-});
-
-btnPreview.addEventListener('click', async () => {
-  if (currentAudio) { currentAudio.pause(); currentAudio = null; btnPreview.classList.remove('speaking'); btnPreview.textContent = '▶ Prova'; return; }
-  btnPreview.classList.add('speaking');
-  btnPreview.textContent = '⏳ Carico…';
-  try {
-    const audio = await fetchTTS('Lo spiolo è appostato dietro il cespuglio e sussurra nell\'ombra.', savedVoiceId);
-    currentAudio = audio;
-    btnPreview.textContent = '⏹ Stop';
-    audio.play();
-    audio.onended = () => { currentAudio = null; btnPreview.classList.remove('speaking'); btnPreview.textContent = '▶ Prova'; };
-  } catch {
-    btnPreview.classList.remove('speaking');
-    btnPreview.textContent = '▶ Prova';
-    showToast('Errore nel caricamento audio');
-  }
-});
-
-// ── TTS fetch ─────────────────────────────────────────────────────────────────
-async function fetchTTS(text, voiceId) {
-  const res = await fetch(`${API}/tts`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ text, voice_id: voiceId })
-  });
-  if (!res.ok) throw new Error('Errore TTS');
-  const blob = await res.blob();
-  const url  = URL.createObjectURL(blob);
-  return new Audio(url);
-}
-
-async function speak(id, text, btn) {
-  if (speakingId === id) {
-    if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-    speakingId = null;
-    btn.classList.remove('speaking');
-    btn.innerHTML = ttsIcon() + ' Ascolta';
+// ── Voci browser con nomi spiolici ────────────────────────────────────────────
+function populateVoices() {
+  const voices = window.speechSynthesis.getVoices();
+  // Filtra solo voci italiane
+  const italian = voices.filter(v => v.lang.startsWith('it'));
+  if (!italian.length) {
+    voiceSel.innerHTML = '<option value="">Nessuna voce disponibile</option>';
     return;
   }
-  if (currentAudio) { currentAudio.pause(); currentAudio = null; }
-  document.querySelectorAll('.btn-tts.speaking').forEach(b => { b.classList.remove('speaking'); b.innerHTML = ttsIcon() + ' Ascolta'; });
 
-  speakingId = id;
-  btn.classList.add('speaking');
-  btn.innerHTML = ttsIcon() + ' Carico…';
-  btn.disabled = true;
-  revealSecret(id);
+  allVoices = italian;
+  voiceSel.innerHTML = '';
 
-  try {
-    const audio = await fetchTTS(text, savedVoiceId);
-    currentAudio = audio;
-    btn.innerHTML = ttsIcon() + ' In ascolto…';
-    btn.disabled = false;
-    audio.play();
-    audio.onended = () => {
-      currentAudio = null; speakingId = null;
-      btn.classList.remove('speaking');
-      btn.innerHTML = ttsIcon() + ' Ascolta';
-    };
-  } catch {
-    speakingId = null;
-    btn.classList.remove('speaking');
-    btn.innerHTML = ttsIcon() + ' Ascolta';
-    btn.disabled = false;
-    showToast('Errore audio. Riprova.');
+  italian.forEach((v, i) => {
+    const opt = document.createElement('option');
+    opt.value = v.name;
+    // Assegna nome spiolico in base all'indice, ciclando se necessario
+    opt.textContent = SPIOLO_NAMES[i % SPIOLO_NAMES.length];
+    if (v.name === selectedVoiceName) opt.selected = true;
+    voiceSel.appendChild(opt);
+  });
+
+  // Se nessuna era salvata, seleziona la prima
+  if (!selectedVoiceName || !italian.find(v => v.name === selectedVoiceName)) {
+    selectedVoiceName = italian[0].name;
+    voiceSel.value = selectedVoiceName;
   }
 }
+
+window.speechSynthesis.onvoiceschanged = populateVoices;
+populateVoices();
+
+voiceSel.addEventListener('change', () => {
+  selectedVoiceName = voiceSel.value;
+  localStorage.setItem(VOICE_KEY, selectedVoiceName);
+});
+
+function getSelectedVoice() {
+  return allVoices.find(v => v.name === selectedVoiceName) || allVoices[0] || null;
+}
+
+// Pulsante anteprima
+btnPreview.addEventListener('click', () => {
+  window.speechSynthesis.cancel();
+  if (btnPreview.classList.contains('speaking')) {
+    btnPreview.classList.remove('speaking');
+    btnPreview.textContent = '▶ Prova';
+    return;
+  }
+  const u = new SpeechSynthesisUtterance('Lo spiolo è appostato dietro il cespuglio e sussurra nell\'ombra.');
+  u.lang = 'it-IT'; u.rate = 0.88; u.pitch = 0.85;
+  const voice = getSelectedVoice();
+  if (voice) u.voice = voice;
+  btnPreview.classList.add('speaking');
+  btnPreview.textContent = '⏹ Stop';
+  u.onend = u.onerror = () => {
+    btnPreview.classList.remove('speaking');
+    btnPreview.textContent = '▶ Prova';
+  };
+  window.speechSynthesis.speak(u);
+});
 
 // ── Fingerprint ───────────────────────────────────────────────────────────────
 async function collectFingerprint() {
@@ -363,6 +334,24 @@ bsend.addEventListener('click',async()=>{
   finally{bsend.disabled=inp.value.length<10;}
 });
 
+// ── TTS browser ───────────────────────────────────────────────────────────────
+function speak(id, text, btn) {
+  if(speakingId===id){
+    window.speechSynthesis.cancel();speakingId=null;
+    btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';return;
+  }
+  window.speechSynthesis.cancel();
+  document.querySelectorAll('.btn-tts.speaking').forEach(b=>{b.classList.remove('speaking');b.innerHTML=ttsIcon()+' Ascolta';});
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang='it-IT';u.rate=0.88;u.pitch=0.85;
+  const voice=getSelectedVoice();if(voice)u.voice=voice;
+  speakingId=id;btn.classList.add('speaking');btn.innerHTML=ttsIcon()+' In ascolto…';
+  revealSecret(id);
+  u.onend=()=>{speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';};
+  u.onerror=()=>{speakingId=null;btn.classList.remove('speaking');btn.innerHTML=ttsIcon()+' Ascolta';};
+  window.speechSynthesis.speak(u);
+}
+
 function revealSecret(id){
   const rev=loadRevealed();if(!rev.includes(id)){rev.push(id);saveRevealed(rev);}
   const el=document.querySelector(`.ctext[data-id="${id}"]`);
@@ -371,6 +360,7 @@ function revealSecret(id){
   if(hint)hint.classList.add('hidden');
 }
 
+// ── Reazioni ──────────────────────────────────────────────────────────────────
 function buildReactionsHTML(sid,reactions,myEmoji){
   let html='<div class="reactions" data-sid="'+sid+'">';
   Object.entries(reactions).sort((a,b)=>b[1]-a[1]).forEach(([emoji,count])=>{
@@ -417,7 +407,8 @@ async function doReact(secretId,emoji,card){
     const res=await fetch(`${API}/reactions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({secret_id:secretId,emoji})});
     const data=await res.json();if(!res.ok)return;
     myReacts[key]=emoji;saveMyReacts(myReacts);
-    const wrap=card.querySelector('.reactions');if(wrap){wrap.outerHTML=buildReactionsHTML(secretId,data.reactions,emoji);}
+    const wrap=card.querySelector('.reactions');
+    if(wrap){wrap.outerHTML=buildReactionsHTML(secretId,data.reactions,emoji);}
     attachReactionEvents(card,secretId);
   }catch{}
 }
@@ -449,7 +440,6 @@ document.addEventListener('click',e=>{if(!e.target.closest('.reactions'))documen
 let tt;
 function showToast(msg){toast.textContent=msg;toast.classList.add('show');clearTimeout(tt);tt=setTimeout(()=>toast.classList.remove('show'),3200);}
 
-loadVoices();
 fetchSecrets(true);
 fetchStats();
 </script>
